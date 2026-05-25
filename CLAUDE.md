@@ -112,7 +112,7 @@ setInterval(() => {
 navigator.mediaDevices.getDisplayMedia = async () => canvas.captureStream(30);
 ```
 
-The recorder reads `getDisplayMedia` lazily (on the Start click), so post-load injection works too, but `addInitScript` is the safer default. Chromium only — WebKit's `MediaRecorder` is weak; Firefox codec support drifts. Driveable IDs: `#caprr-toggle`, `#caprr-status`, `#caprr-save`, `#caprr-discard`, `#caprr-add-note`, `#caprr-overlay-status`, `#caprr-pane-video`, `#caprr-pane-dom`.
+The recorder reads `getDisplayMedia` lazily (on the Start click), so post-load injection works too, but `addInitScript` is the safer default. Headless Chromium is the only configured test target — `MediaRecorder` quality in WebKit and Firefox is anecdotally weaker but has not been measured here; see the Browser support section. Driveable IDs: `#caprr-toggle`, `#caprr-status`, `#caprr-save`, `#caprr-discard`, `#caprr-add-note`, `#caprr-overlay-status`, `#caprr-pane-video`, `#caprr-pane-dom`.
 
 **Manual** — anything where "does this *look* right?" is the test. The stubbed pixel source is solid-color squares, not the page, so any assertion on the pixel-video pane under automation is checking the stub, not the product. The following need a human:
 
@@ -128,6 +128,18 @@ Run a manual pass before every release and on any change to `annotations.ts`, `t
 ## Releasing
 
 Tag-driven: `git tag v0.X.Y && git push --follow-tags` triggers `.github/workflows/release.yml`, which publishes npm first (with provenance) and then crates.io. Required secrets: `NPM_TOKEN`, `CRATES_IO_TOKEN`. Version is duplicated in `packages/core/package.json` and `Cargo.toml` (workspace.package.version) — bump both.
+
+## Browser support
+
+Validated end-to-end (record → annotate → save → sidecar roundtrip → VLC playback) on 2026-05-25: **Chromium ≥ 111, Firefox ≥ 110, Safari ≥ 17.** All three negotiated WebM via `pickMime`; the MP4 (`uuid`-box) sidecar path in `save.ts` is unit-tested but not yet seen end-to-end. `preferCurrentTab` / `displaySurface: 'browser'` are Chromium-only picker hints — other browsers ignore them safely.
+
+Target is declared in three places that must stay in sync:
+
+1. `packages/core/package.json` → `browserslist`
+2. `packages/core/vite.config.ts` → `build.target`
+3. `packages/core/tsconfig.json` → `compilerOptions.target` (currently `ES2022`)
+
+`createRecorder()` feature-detects and returns a no-op handle on unsupported browsers. Re-run the smoke pass and update the date above when changing the target.
 
 ## Conventions worth knowing
 

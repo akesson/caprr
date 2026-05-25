@@ -51,5 +51,11 @@
     "dom-recorder",
     "annotations",
     "debugging"
+  ],
+  "browserslist": [
+    "Chrome >= 111",
+    "Edge >= 111",
+    "Firefox >= 110",
+    "Safari >= 17"
   ]
 }

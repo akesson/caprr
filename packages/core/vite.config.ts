@@ -11,8 +11,11 @@ import { resolve } from 'node:path';
 //
 // rrweb + its plugins are *bundled in* (per the architecture decision) so that
 // a consumer has a single import with version pinning guaranteed.
+// Browser target: see CLAUDE.md → Browser support.
+// Kept in sync with the `browserslist` field in package.json.
 export default defineConfig({
   build: {
+    target: ['chrome111', 'edge111', 'firefox110', 'safari17'],
     lib: {
       entry: resolve(__dirname, 'src/index.ts'),
       name: 'caprr',

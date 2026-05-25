@@ -48,6 +48,10 @@ fn App() -> Element {
 
 Both packages mount a floating "record" pill in the bottom-right of the page. Recording → Stop → review overlay with annotation. Saved files are `.webm` plus a `Void`-wrapped JSON sidecar containing rrweb events, viewport metadata, and annotations (each with both a pixel anchor and a DOM-element anchor when one resolves).
 
+## Browser support
+
+Validated end-to-end on Chromium ≥ 111, Firefox ≥ 110, Safari ≥ 17 — all produce WebM output. `createRecorder()` returns a no-op handle on unsupported browsers, so you can mount unconditionally.
+
 ## Repo layout
 
 ```
