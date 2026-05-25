@@ -1,0 +1,22 @@
+{
+  "name": "caprr-monorepo",
+  "version": "0.1.0",
+  "private": true,
+  "description": "Workspace root for caprr (capture + rrweb). Not published.",
+  "license": "MIT",
+  "scripts": {
+    "build": "pnpm -r --filter ./packages/core build",
+    "test": "pnpm -r --filter ./packages/core test",
+    "typecheck": "pnpm -r --filter ./packages/core typecheck",
+    "vendor:dioxus": "node scripts/vendor-dioxus-assets.mjs"
+  },
+  "devDependencies": {
+    "typescript": "^5.7.2",
+    "vite": "^6.0.7",
+    "vite-plugin-dts": "^4.4.0"
+  },
+  "packageManager": "pnpm@11.0.9",
+  "engines": {
+    "node": ">=20"
+  }
+}

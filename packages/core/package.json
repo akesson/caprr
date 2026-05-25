@@ -1,0 +1,55 @@
+{
+  "name": "caprr",
+  "version": "0.1.0",
+  "description": "Drop-in DOM session recorder — rrweb events + pixel video + annotations, saved as a single .webm with an embedded JSON sidecar.",
+  "license": "MIT",
+  "author": "henrik <henrik@akesson.mobi>",
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/akesson/caprr.git",
+    "directory": "packages/core"
+  },
+  "type": "module",
+  "main": "./dist/index.cjs",
+  "module": "./dist/index.js",
+  "types": "./dist/index.d.ts",
+  "exports": {
+    ".": {
+      "types": "./dist/index.d.ts",
+      "import": "./dist/index.js",
+      "require": "./dist/index.cjs"
+    },
+    "./styles.css": "./dist/styles.css"
+  },
+  "files": [
+    "dist",
+    "README.md",
+    "LICENSE"
+  ],
+  "scripts": {
+    "build": "vite build",
+    "dev": "vite build --watch",
+    "typecheck": "tsc --noEmit",
+    "test": "vitest run"
+  },
+  "dependencies": {
+    "rrweb": "2.0.0-alpha.4",
+    "rrweb-player": "1.0.0-alpha.4",
+    "@rrweb/rrweb-plugin-console-record": "2.0.0-alpha.20"
+  },
+  "devDependencies": {
+    "typescript": "^5.7.2",
+    "vite": "^6.0.7",
+    "vite-plugin-dts": "^4.4.0",
+    "vitest": "^2.1.8",
+    "jsdom": "^25.0.1"
+  },
+  "keywords": [
+    "rrweb",
+    "session-replay",
+    "screen-recording",
+    "dom-recorder",
+    "annotations",
+    "debugging"
+  ]
+}

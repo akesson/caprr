@@ -1,0 +1,10 @@
+packages:
+  - 'packages/core'
+  - 'examples/plain-html'
+
+# esbuild ships native binaries via a postinstall script; vite needs them.
+allowBuilds:
+  esbuild: true
+
+onlyBuiltDependencies:
+  - esbuild

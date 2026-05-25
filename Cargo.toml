@@ -1,7 +1,18 @@
-[package]
-name = "caprr"
+[workspace]
+resolver = "3"
+members = ["packages/dioxus"]
+
+[workspace.package]
 version = "0.1.0"
 edition = "2024"
 license = "MIT"
+authors = ["henrik <henrik@akesson.mobi>"]
+repository = "https://github.com/akesson/caprr"
+homepage = "https://github.com/akesson/caprr"
+readme = "README.md"
 
-[dependencies]
+[workspace.lints.rust]
+unsafe_code = "forbid"
+
+[workspace.lints.clippy]
+all = { level = "warn", priority = -1 }

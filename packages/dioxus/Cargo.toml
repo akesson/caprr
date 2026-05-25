@@ -1,0 +1,33 @@
+[package]
+name = "caprr-dioxus"
+description = "Dioxus integration for caprr — drop a <Recorder/> into your app to capture rrweb + pixel video."
+categories = ["wasm", "development-tools::debugging", "gui"]
+keywords = ["dioxus", "rrweb", "session-replay", "recording"]
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+authors.workspace = true
+repository.workspace = true
+homepage.workspace = true
+readme.workspace = true
+
+# `assets/` holds the bundled JS + CSS copied from `../core/dist` at publish
+# time. It's gitignored — `build.rs` checks it exists and errors out with a
+# helpful message if it's missing (typically: run `pnpm build` first).
+include = [
+    "src/**/*",
+    "assets/**/*",
+    "build.rs",
+    "Cargo.toml",
+    "README.md",
+    "LICENSE",
+]
+
+[dependencies]
+# A library crate using `#[component]` and `rsx!` needs the macros from
+# the default feature set. Renderer choice (web / desktop / etc.) is left
+# to the consumer's binary.
+dioxus = "0.7"
+
+[lints]
+workspace = true

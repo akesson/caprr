@@ -24,3 +24,16 @@ target
 # Added by cargo
 
 /target
+
+# Node / pnpm
+node_modules/
+.pnpm-store/
+
+# Build output
+packages/*/dist/
+packages/dioxus/assets/
+
+# Editor / OS
+.DS_Store
+.vscode/
+.idea/
