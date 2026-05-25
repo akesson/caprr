@@ -134,7 +134,17 @@ Tag-driven: `git tag v0.X.Y && git push --follow-tags` triggers `.github/workflo
 
 ## Browser support
 
-Validated end-to-end (record → annotate → save → sidecar roundtrip → VLC playback) on 2026-05-25: **Chromium ≥ 111, Firefox ≥ 110, Safari ≥ 17.** All three negotiated WebM via `pickMime`; the MP4 (`uuid`-box) sidecar path in `save.ts` is unit-tested but not yet seen end-to-end. `preferCurrentTab` / `displaySurface: 'browser'` are Chromium-only picker hints — other browsers ignore them safely.
+Validated end-to-end (record → annotate → save → sidecar roundtrip → VLC playback) on 2026-05-25: **Chromium ≥ 111, Firefox ≥ 110, Safari ≥ 17.** `preferCurrentTab` / `displaySurface: 'browser'` are Chromium-only picker hints — other browsers ignore them safely.
+
+`pickMime` is AV1-preferring with a VP9 fallback (Phase 1.4 — codec.ts). Per-browser, the recording side typically negotiates:
+
+| Browser | Likely produced codec | Notes |
+|---|---|---|
+| Chromium ≥ 116 | `video/webm;codecs=av01,opus` or `video/mp4;codecs=av01.0.04M.08,opus` | AV1 in WebM is the most-tested Chromium path |
+| Firefox ≥ 110 | `video/webm;codecs=vp9,opus` | Mozilla bug 1561121 (AV1 encode via MediaRecorder) is still NEW/unassigned as of 2026; Firefox produces VP9 |
+| Safari ≥ 17 | `video/mp4` (typically H.264 historically) | AV1 encoding via Safari MediaRecorder is not publicly confirmed; falls through to whatever Safari supports. iOS Safari 17.4+ also plays WebM. |
+
+Saved files round-trip across the matrix regardless of which codec the recording browser produced. The MP4 (`uuid`-box) sidecar path in `save.ts` is now exercised by the Playwright matrix; a full VLC playback smoke after the codec-list change has not been re-run — owed.
 
 Target is declared in three places that must stay in sync:
 

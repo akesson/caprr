@@ -90,6 +90,19 @@ test.describe('recorder lifecycle (canvas-stream stub)', () => {
     );
     expect(meta?.name).toMatch(/^caprr-\d{8}-\d{6}\.(webm|mp4)$/);
     expect(meta?.annotationCount).toBe(0);
+
+    // The saved Blob's .type reflects the codec the browser actually
+    // negotiated. Phase 1.4 made the MIME list AV1-preferring with a
+    // VP9 fallback; we assert the regression contract — no legacy H.264
+    // / avc1 — and that the type starts with video/.
+    const blobType = await page.evaluate(() => {
+      const b = (window as unknown as { __caprrLastSavedBlob?: Blob }).__caprrLastSavedBlob;
+      return b?.type ?? null;
+    });
+    expect(blobType).toBeTruthy();
+    expect(blobType!).toMatch(/^video\/(webm|mp4)/);
+    expect(blobType!).not.toMatch(/avc1/);
+    expect(blobType!).toMatch(/av01|vp9|webm$|mp4$/);
   });
 
   test('discard from review returns recorder to idle', async ({ page }) => {
