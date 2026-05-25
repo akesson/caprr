@@ -142,3 +142,47 @@ export interface SidecarPayloadV3 {
   events: RrwebEvent[];
   annotations: Annotation[];
 }
+
+/** Serialize the payload + frame it as a container-appropriate sidecar.
+ *  Runs in a Web Worker when available — JSON.stringify on a many-MB
+ *  events array is the dominant blocking cost in save(); offloading it
+ *  keeps the main thread responsive while the file picker resolves.
+ *  Falls back to a main-thread synchronous pass when Worker is not
+ *  available (e.g. SSR / jsdom test runner).
+ *
+ *  The worker source is bundled inline by Vite (`?worker&inline`) so
+ *  the caprr UMD distribution remains a single file. */
+export const buildAndFrameSidecar = async (
+  payload: SidecarPayloadV3,
+  container: Container,
+): Promise<Uint8Array> => {
+  if (typeof Worker !== 'undefined') {
+    try {
+      // Lazy-load: avoids touching the worker module at test time
+      // (Vitest's transformer doesn't run Vite's `?worker&inline` plugin).
+      const { default: SaveWorker } = await import('./save-worker?worker&inline');
+      const worker = new SaveWorker();
+      try {
+        return await new Promise<Uint8Array>((resolve, reject) => {
+          worker.onmessage = (m: MessageEvent): void => {
+            const data = m.data as { ok: true; sidecar: Uint8Array } | { ok: false; error: string };
+            if (data.ok) resolve(data.sidecar);
+            else reject(new Error(data.error));
+          };
+          worker.onerror = (e): void => reject(new Error('save-worker error: ' + (e.message || 'unknown')));
+          worker.postMessage({ payload, container });
+        });
+      } finally {
+        worker.terminate();
+      }
+    } catch (e) {
+      // Worker construction or module load failed — fall through.
+      // Most likely cause is `?worker&inline` not being resolved (we're
+      // running under a non-Vite bundler, or in a test runner).
+      console.warn('[caprr] save-worker unavailable; using main-thread fallback', e);
+    }
+  }
+  // Main-thread fallback. Same code path as the worker, just blocks.
+  const compressed = await gzipBytes(new TextEncoder().encode(JSON.stringify(payload)));
+  return buildSidecar(compressed, container);
+};

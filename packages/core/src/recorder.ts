@@ -13,8 +13,7 @@ import { installPillDrag, restorePillPos } from './pill-drag';
 import { buildErrorsPlugin } from './plugin-errors';
 import { buildNetworkPlugin } from './plugin-network';
 import {
-  buildSidecar,
-  gzipBytes,
+  buildAndFrameSidecar,
   saveBlob,
   tsName,
   type SidecarPayloadV3,
@@ -450,8 +449,7 @@ export const createRecorderImpl = (opts: CreateRecorderOptions): Recorder => {
       events: s.events,
       annotations: structuredClone(s.annotations),
     };
-    const compressed = await gzipBytes(new TextEncoder().encode(JSON.stringify(payload)));
-    const sidecar = buildSidecar(compressed, ext === 'mp4' ? 'mp4' : 'webm');
+    const sidecar = await buildAndFrameSidecar(payload, ext === 'mp4' ? 'mp4' : 'webm');
     const finalBlob = new Blob([s.videoBlob as BlobPart, sidecar as BlobPart], {
       type: s.videoMime || 'video/' + ext,
     });
