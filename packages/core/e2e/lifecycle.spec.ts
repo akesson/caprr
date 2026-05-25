@@ -4,9 +4,13 @@ import { installCanvasGetDisplayMediaStub, installNotAllowedStub } from './fixtu
 
 /** Playwright's bundled WebKit on Linux (used in CI) ships without
  *  MediaRecorder. Real Safari has it (17.4+ on Apple platforms), so
- *  the test gap is in the test runtime, not the product. Skip the
- *  start-flow tests on browsers that don't expose the constructor —
- *  there is nothing for the recorder to do in `start()` without it. */
+ *  the test gap is in the test runtime, not the product.
+ *
+ *  createRecorder() feature-detects MediaRecorder + getDisplayMedia
+ *  and returns a no-op handle on unsupported browsers — that handle
+ *  never mounts the pill or overlay, so every test in this file
+ *  (lifecycle, cancel-path, destroy) needs to skip when the API
+ *  is absent. */
 const skipIfNoMediaRecorder = async (page: Page): Promise<void> => {
   const hasMR = await page.evaluate(() => typeof MediaRecorder !== 'undefined');
   test.skip(!hasMR, 'browser lacks MediaRecorder (Playwright WebKit on Linux)');
@@ -142,6 +146,10 @@ test.describe('recorder lifecycle (canvas-stream stub)', () => {
   }) => {
     await installNotAllowedStub(page);
     await page.goto('/');
+    // createRecorder feature-detects: on browsers without MediaRecorder
+    // it returns a no-op handle that never mounts the pill, so there's
+    // no UI to drive the cancel-path assertions against.
+    await skipIfNoMediaRecorder(page);
 
     await expect(page.locator('#caprr-status')).toHaveText('Idle');
     await page.click('#caprr-toggle');
@@ -388,6 +396,8 @@ test.describe('recorder lifecycle (canvas-stream stub)', () => {
   test('destroy() removes the pill and the overlay from the document', async ({ page }) => {
     await installCanvasGetDisplayMediaStub(page);
     await page.goto('/');
+    // No pill/overlay is mounted when the no-op handle is returned.
+    await skipIfNoMediaRecorder(page);
 
     await expect(page.locator('#caprr-panel')).toBeAttached();
     await expect(page.locator('#caprr-overlay')).toBeAttached();
