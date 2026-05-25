@@ -20,13 +20,14 @@ import {
   type SidecarPayloadV3,
 } from './save';
 import { fullCleanup, initialState } from './state';
-import { openRecordingSink } from './storage';
+import { openEventsSink, openRecordingSink } from './storage';
 import { makeTimeSource, type TimeSource } from './time';
 import type {
   CreateRecorderOptions,
   Recorder,
   RecorderStateChangeDetail,
   RecorderStateName,
+  RrwebEvent,
   RrwebPlayer,
 } from './types';
 import { createOverlay, createPill } from './ui';
@@ -334,6 +335,7 @@ export const createRecorderImpl = (opts: CreateRecorderOptions): Recorder => {
     });
 
     s.events = [];
+    s.eventsSink = await openEventsSink();
     s.startedAt = Date.now();
     s.recording = {
       viewport: {
@@ -350,7 +352,7 @@ export const createRecorderImpl = (opts: CreateRecorderOptions): Recorder => {
 
     s.stopFn = record({
       // eslint-disable-next-line @typescript-eslint/no-explicit-any
-      emit: (e: any) => s.events.push(e),
+      emit: (e: any) => s.eventsSink?.push(e),
       recordCanvas: true,
       collectFonts: true,
       blockSelector: '#caprr-panel,#caprr-overlay',
@@ -393,6 +395,19 @@ export const createRecorderImpl = (opts: CreateRecorderOptions): Recorder => {
         }
       } else {
         s.videoBlob = new Blob([], { type });
+      }
+      // Materialize events from the sink. The Replayer needs them as
+      // an in-memory array; the on-disk NDJSON is just a buffering
+      // strategy for the recording phase.
+      if (s.eventsSink) {
+        try {
+          s.events = (await s.eventsSink.finalize()) as RrwebEvent[];
+        } catch (e) {
+          console.warn('[caprr] eventsSink.finalize failed', e);
+          s.events = [];
+        }
+        void s.eventsSink.dispose();
+        s.eventsSink = null;
       }
       if (s.events.length < 2 || s.videoBlob.size === 0) {
         s.events = [];

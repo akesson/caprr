@@ -1,4 +1,4 @@
-import type { RecordingSink } from './storage';
+import type { EventsSink, RecordingSink } from './storage';
 import type {
   ActivePane,
   Annotation,
@@ -15,8 +15,14 @@ import type {
 export interface RecorderState {
   /** Lifecycle state — see RecorderStateName. */
   state: RecorderStateName;
-  /** rrweb events accumulated since the recording started. */
+  /** rrweb events accumulated since the recording started. After a
+   *  stop+finalize this is the read-back from the EventsSink; during
+   *  recording it stays empty (events live in the sink). */
   events: RrwebEvent[];
+  /** Per-recording events sink (NDJSON-on-OPFS or in-memory). Active
+   *  only during 'recording'; nulled after finalize materializes the
+   *  events into `events`. */
+  eventsSink: EventsSink | null;
   /** Returned by `rrweb.record()` — call to stop recording. */
   stopFn: (() => void) | null;
   /** ms wall-clock at recording start. Used for the elapsed ticker only. */
@@ -50,6 +56,7 @@ export interface RecorderState {
 export const initialState = (): RecorderState => ({
   state: 'idle',
   events: [],
+  eventsSink: null,
   stopFn: null,
   startedAt: 0,
   player: null,
@@ -81,6 +88,10 @@ export const fullCleanup = (s: RecorderState): void => {
     // temp file (no-op for the in-memory fallback).
     void s.recordingSink.dispose();
     s.recordingSink = null;
+  }
+  if (s.eventsSink) {
+    void s.eventsSink.dispose();
+    s.eventsSink = null;
   }
   s.videoBlob = null;
   if (s.videoUrl) {

@@ -1,5 +1,5 @@
 import { afterEach, describe, expect, it, vi } from 'vitest';
-import { openRecordingSink } from './storage';
+import { openEventsSink, openRecordingSink } from './storage';
 
 /**
  * jsdom has no OPFS. The capable-path is exercised under Playwright
@@ -35,6 +35,46 @@ describe('openRecordingSink — in-memory fallback', () => {
     // After dispose, finalize on the same sink yields an empty blob.
     const out = await sink.finalize('video/webm');
     expect(out.size).toBe(0);
+  });
+});
+
+describe('openEventsSink — in-memory fallback', () => {
+  it('reports backend "memory" when navigator.storage is missing', async () => {
+    const sink = await openEventsSink();
+    expect(sink.backend).toBe('memory');
+  });
+
+  it('counts pushes and finalizes a copy (not the live array)', async () => {
+    const sink = await openEventsSink();
+    sink.push({ type: 0, ts: 1 });
+    sink.push({ type: 2, ts: 2 });
+    expect(sink.count).toBe(2);
+    const list = await sink.finalize();
+    expect(list).toHaveLength(2);
+    // dispose must not clobber the array the caller now owns.
+    await sink.dispose();
+    expect(list).toHaveLength(2);
+  });
+
+  it('handles dispose without finalize', async () => {
+    const sink = await openEventsSink();
+    sink.push({ x: 1 });
+    await sink.dispose();
+    // After dispose, count drops (in-memory array cleared).
+    expect(sink.count).toBe(0);
+  });
+});
+
+describe('openEventsSink — OPFS detect-but-fail', () => {
+  it('falls back to in-memory when getDirectory rejects (e.g. WebKit)', async () => {
+    vi.stubGlobal('navigator', {
+      ...globalThis.navigator,
+      storage: {
+        getDirectory: () => Promise.reject(new Error('unsupported')),
+      },
+    });
+    const sink = await openEventsSink();
+    expect(sink.backend).toBe('memory');
   });
 });
 
