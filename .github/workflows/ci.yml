@@ -57,6 +57,10 @@ jobs:
         if: steps.pw-cache.outputs.cache-hit == 'true'
         working-directory: packages/core
         run: pnpm exec playwright install-deps chromium firefox webkit
+      # The plain-html example imports `caprr` via its `exports` map,
+      # which points at `dist/index.js`. Without a build, the dev server
+      # serves a 404 and the recorder never mounts — every test fails.
+      - run: pnpm build
       - run: pnpm test:e2e
       - uses: actions/upload-artifact@v4
         if: failure()
