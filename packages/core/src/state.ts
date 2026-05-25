@@ -1,3 +1,4 @@
+import type { RecordingSink } from './storage';
 import type {
   ActivePane,
   Annotation,
@@ -32,7 +33,10 @@ export interface RecorderState {
   // --- pixel video capture ----------------------------------------------
   stream: MediaStream | null;
   recorder: MediaRecorder | null;
-  videoChunks: Blob[];
+  /** OPFS-backed (or in-memory fallback) sink that receives every
+   *  MediaRecorder dataavailable chunk. Owned for the duration of one
+   *  recording; replaced on each start(). */
+  recordingSink: RecordingSink | null;
   videoMime: string;
   videoBlob: Blob | null;
   videoUrl: string | null;
@@ -54,7 +58,7 @@ export const initialState = (): RecorderState => ({
   tickHandle: null,
   stream: null,
   recorder: null,
-  videoChunks: [],
+  recordingSink: null,
   videoMime: '',
   videoBlob: null,
   videoUrl: null,
@@ -63,16 +67,21 @@ export const initialState = (): RecorderState => ({
   annotations: [],
 });
 
-/** Convenience: drop all transient resources (stream tracks, blob URLs)
- *  without touching annotations or events. Called from S.discard and
- *  S.start on a failed setup. */
+/** Convenience: drop all transient resources (stream tracks, blob URLs,
+ *  OPFS temp files) without touching annotations or events. Called
+ *  from S.discard and S.start on a failed setup. */
 export const fullCleanup = (s: RecorderState): void => {
   if (s.stream) {
     s.stream.getTracks().forEach((t) => t.stop());
     s.stream = null;
   }
   s.recorder = null;
-  s.videoChunks = [];
+  if (s.recordingSink) {
+    // Best-effort dispose; do not block. dispose() removes the OPFS
+    // temp file (no-op for the in-memory fallback).
+    void s.recordingSink.dispose();
+    s.recordingSink = null;
+  }
   s.videoBlob = null;
   if (s.videoUrl) {
     URL.revokeObjectURL(s.videoUrl);

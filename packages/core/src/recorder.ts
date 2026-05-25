@@ -20,6 +20,7 @@ import {
   type SidecarPayloadV3,
 } from './save';
 import { fullCleanup, initialState } from './state';
+import { openRecordingSink } from './storage';
 import { makeTimeSource, type TimeSource } from './time';
 import type {
   CreateRecorderOptions,
@@ -306,7 +307,10 @@ export const createRecorderImpl = (opts: CreateRecorderOptions): Recorder => {
     });
 
     s.videoMime = pickMime();
-    s.videoChunks = [];
+    // Open the chunk sink BEFORE MediaRecorder starts so the first
+    // 'dataavailable' event has somewhere to land. Backend selection
+    // (OPFS vs in-memory) is at openRecordingSink time.
+    s.recordingSink = await openRecordingSink();
     try {
       s.recorder = new MediaRecorder(stream, s.videoMime ? { mimeType: s.videoMime } : undefined);
     } catch (e) {
@@ -317,7 +321,11 @@ export const createRecorderImpl = (opts: CreateRecorderOptions): Recorder => {
       return;
     }
     s.recorder.ondataavailable = (e): void => {
-      if (e.data && e.data.size > 0) s.videoChunks.push(e.data);
+      if (e.data && e.data.size > 0) {
+        // Fire-and-forget. The sink serializes writes internally; the
+        // WritableStream applies backpressure if needed.
+        void s.recordingSink?.writeChunk(e.data);
+      }
     };
 
     await new Promise<void>((res) => {
@@ -369,13 +377,23 @@ export const createRecorderImpl = (opts: CreateRecorderOptions): Recorder => {
       s.autoStopHandle = null;
     }
     stopTicker();
-    const finalizeVideo = (): void => {
+    const finalizeVideo = async (): Promise<void> => {
       if (s.stream) {
         s.stream.getTracks().forEach((t) => t.stop());
         s.stream = null;
       }
       const ext = extForMime(s.videoMime);
-      s.videoBlob = new Blob(s.videoChunks, { type: s.videoMime || 'video/' + ext });
+      const type = s.videoMime || 'video/' + ext;
+      if (s.recordingSink) {
+        try {
+          s.videoBlob = await s.recordingSink.finalize(type);
+        } catch (e) {
+          console.warn('[caprr] sink.finalize failed', e);
+          s.videoBlob = new Blob([], { type });
+        }
+      } else {
+        s.videoBlob = new Blob([], { type });
+      }
       if (s.events.length < 2 || s.videoBlob.size === 0) {
         s.events = [];
         fullCleanup(s);
