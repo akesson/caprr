@@ -48,7 +48,12 @@ export const computeSelector = (elem: Element | null): string | null => {
 };
 
 /** Probe the rrweb-player's rebuilt iframe at its current playhead and
- *  return the DOM target under the given normalized stage coordinates. */
+ *  return the DOM target under the given normalized stage coordinates.
+ *
+ *  Uses `elementsFromPoint` (plural) and walks the stack so a click that
+ *  lands on a transparent overlay still resolves to the underlying
+ *  recorded element. Falls back to `elementFromPoint` if `elementsFromPoint`
+ *  is unavailable. */
 const resolveDomTargetNow = (s: RecorderState, normX: number, normY: number): AnnotationDom | null => {
   if (!s.player) return null;
   let replayer: RrwebReplayer | undefined;
@@ -65,27 +70,60 @@ const resolveDomTargetNow = (s: RecorderState, normX: number, normY: number): An
   if (!vp) return null;
   const cssX = normX * vp.width;
   const cssY = normY * vp.height;
-  let elem: Element | null;
+
+  const mirror = (() => {
+    try {
+      return typeof replayer.getMirror === 'function' ? replayer.getMirror() : null;
+    } catch {
+      return null;
+    }
+  })();
+
+  let stack: Element[];
   try {
-    elem = doc.elementFromPoint(cssX, cssY);
+    if (typeof doc.elementsFromPoint === 'function') {
+      stack = doc.elementsFromPoint(cssX, cssY).filter(Boolean);
+    } else {
+      const single = doc.elementFromPoint(cssX, cssY);
+      stack = single ? [single] : [];
+    }
   } catch {
     return null;
   }
-  if (!elem) return null;
-  let nodeId: number | null = null;
-  try {
-    const mirror = typeof replayer.getMirror === 'function' ? replayer.getMirror() : null;
+  if (stack.length === 0) return null;
+
+  // Walk the stack picking the first element that resolves to a positive
+  // rrweb mirror ID. Overlay layers (host-app chrome, anti-aliasing
+  // adapters) often have no mirror entry; the underlying recorded
+  // element does.
+  let chosen: Element | null = null;
+  let chosenId: number | null = null;
+  for (const elem of stack) {
+    if (!elem.tagName) continue;
+    let id: number | null = null;
     if (mirror && typeof mirror.getId === 'function') {
-      const id = mirror.getId(elem);
-      if (id != null && id >= 0) nodeId = id;
+      try {
+        const candidate = mirror.getId(elem);
+        if (candidate != null && candidate >= 0) id = candidate;
+      } catch {
+        // skip
+      }
     }
-  } catch {
-    // fall through
+    if (id != null) {
+      chosen = elem;
+      chosenId = id;
+      break;
+    }
   }
+  // If nothing in the stack had a mirror ID, fall back to the topmost
+  // element — best-effort selector / tag only.
+  if (!chosen) chosen = stack[0] ?? null;
+  if (!chosen) return null;
+
   return {
-    selector: computeSelector(elem),
-    rrweb_node_id: nodeId,
-    tag: elem.tagName ? elem.tagName.toLowerCase() : null,
+    selector: computeSelector(chosen),
+    rrweb_node_id: chosenId,
+    tag: chosen.tagName ? chosen.tagName.toLowerCase() : null,
   };
 };
 
