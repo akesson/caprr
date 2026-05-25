@@ -1,0 +1,80 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>caprr · plain HTML example</title>
+    <style>
+      :root {
+        color-scheme: light dark;
+      }
+      body {
+        font: 14px/1.5 system-ui, sans-serif;
+        max-width: 720px;
+        margin: 40px auto;
+        padding: 0 20px;
+      }
+      h1 { margin-top: 0; }
+      code, pre {
+        background: rgba(127, 127, 127, 0.12);
+        padding: 1px 6px;
+        border-radius: 4px;
+      }
+      pre { padding: 12px; overflow-x: auto; }
+      button {
+        font: inherit;
+        padding: 8px 14px;
+        border-radius: 6px;
+        border: 1px solid currentColor;
+        background: transparent;
+        cursor: pointer;
+      }
+      .grid {
+        display: grid;
+        grid-template-columns: repeat(auto-fit, minmax(160px, 1fr));
+        gap: 12px;
+        margin: 16px 0;
+      }
+      .card {
+        padding: 14px;
+        border: 1px solid rgba(127, 127, 127, 0.3);
+        border-radius: 8px;
+      }
+    </style>
+    <script type="module" crossorigin src="/assets/index-CnQTgBkE.js"></script>
+    <link rel="stylesheet" crossorigin href="/assets/index-CezLEOro.css">
+  </head>
+  <body>
+    <h1>caprr · plain HTML example</h1>
+    <p>
+      The recorder pill should be visible in the bottom-right corner.
+      Click <strong>Start Recording</strong>, share this tab, interact below,
+      then click <strong>Stop</strong> to enter review.
+    </p>
+
+    <h2>Things to annotate</h2>
+    <div class="grid">
+      <div class="card" data-cy="card-a">
+        <p><strong>Card A</strong></p>
+        <button data-cy="btn-load">Trigger fetch</button>
+      </div>
+      <div class="card" data-cy="card-b">
+        <p><strong>Card B</strong></p>
+        <button data-cy="btn-log">Log to console</button>
+      </div>
+      <div class="card" data-cy="card-c">
+        <p><strong>Card C</strong></p>
+        <button data-cy="btn-error">console.error</button>
+      </div>
+    </div>
+
+    <h2>Notes</h2>
+    <ul>
+      <li>The pill is draggable — grab the <code>⠿</code> and reposition.</li>
+      <li>Network metadata is captured for fetch/XHR; try the "Trigger fetch" button.</li>
+      <li>Console events are captured; try the "Log" and "console.error" buttons.</li>
+      <li>Saved file is <code>.webm</code> with an EBML <code>Void</code> sidecar carrying the rrweb JSON + annotations.</li>
+    </ul>
+
+  </body>
+</html>

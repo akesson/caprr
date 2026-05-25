@@ -1,6 +1,6 @@
 [workspace]
 resolver = "3"
-members = ["packages/dioxus"]
+members = ["packages/dioxus", "examples/dioxus-app"]
 
 [workspace.package]
 version = "0.1.0"

@@ -1,0 +1,18 @@
+{
+  "name": "caprr-example-plain-html",
+  "version": "0.0.0",
+  "private": true,
+  "description": "Standalone HTML demo of caprr — loads the UMD bundle and mounts the recorder.",
+  "type": "module",
+  "scripts": {
+    "dev": "vite",
+    "build": "vite build",
+    "preview": "vite preview"
+  },
+  "dependencies": {
+    "caprr": "workspace:*"
+  },
+  "devDependencies": {
+    "vite": "^6.0.7"
+  }
+}

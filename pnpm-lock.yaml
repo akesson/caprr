@@ -18,6 +18,16 @@ importers:
         specifier: ^4.4.0
         version: 4.5.4(rollup@4.60.4)(typescript@5.9.3)(vite@6.4.2)
 
+  examples/plain-html:
+    dependencies:
+      caprr:
+        specifier: workspace:*
+        version: link:../../packages/core
+    devDependencies:
+      vite:
+        specifier: ^6.0.7
+        version: 6.4.2
+
   packages/core:
     dependencies:
       '@rrweb/rrweb-plugin-console-record':

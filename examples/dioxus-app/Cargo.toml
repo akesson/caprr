@@ -1,0 +1,13 @@
+[package]
+name = "caprr-example-dioxus-app"
+version = "0.0.0"
+edition = "2024"
+license = "MIT"
+publish = false
+
+[dependencies]
+dioxus = { version = "0.7", features = ["web"] }
+caprr-dioxus = { path = "../../packages/dioxus" }
+
+[lints]
+workspace = true
