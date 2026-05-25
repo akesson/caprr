@@ -1,8 +1,16 @@
-/** Shared types for caprr. rrweb itself doesn't ship .d.ts in this alpha
- *  version, so we declare the slice of its surface we actually use here. */
+/** Shared types for caprr. Where upstream rrweb @rrweb/types already
+ *  ships a precise definition, we re-export it for consumers who want
+ *  to interact with rrweb events directly. The local interfaces below
+ *  are kept narrow on purpose — caprr only treats events as opaque
+ *  push-and-serialize records. */
+
+// Upstream rrweb event types (re-exported for consumers that want the
+// precise discriminated union — Phase 8.2 of the modernization plan).
+export type { eventWithTime, EventType } from '@rrweb/types';
 
 /** A single rrweb event after it's been emitted by the recorder. The full
- *  rrweb event union is large; we just need to push and serialize them. */
+ *  rrweb event union is `eventWithTime` (re-exported above); this is the
+ *  structural minimum caprr uses internally for serialization. */
 export interface RrwebEvent {
   type: number;
   timestamp: number;

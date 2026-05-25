@@ -36,6 +36,7 @@
   },
   "dependencies": {
     "@rrweb/rrweb-plugin-console-record": "2.0.0-alpha.20",
+    "@rrweb/types": "2.0.0-alpha.20",
     "mediabunny": "^1.45.3",
     "rrweb": "2.0.0-alpha.20"
   },

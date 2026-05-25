@@ -33,6 +33,9 @@ importers:
       '@rrweb/rrweb-plugin-console-record':
         specifier: 2.0.0-alpha.20
         version: 2.0.0-alpha.20(@rrweb/utils@2.0.0-alpha.20)(rrweb@2.0.0-alpha.20)
+      '@rrweb/types':
+        specifier: 2.0.0-alpha.20
+        version: 2.0.0-alpha.20
       mediabunny:
         specifier: ^1.45.3
         version: 1.45.3
