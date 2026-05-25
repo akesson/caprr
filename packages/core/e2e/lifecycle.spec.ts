@@ -19,6 +19,63 @@ const findMarkerOffset = (haystack: Uint8Array): number => {
 };
 
 test.describe('recorder lifecycle (canvas-stream stub)', () => {
+  // TEMP DIAGNOSTIC: WebKit on Linux (Playwright CI) fails 7/9 of these
+  // tests, stuck at "Waiting for share" — but WebKit on macOS passes
+  // 9/9. Capturing console + pageerror so the failing CI run tells us
+  // why (probably MediaRecorder/codec support). Remove once root cause
+  // is identified and fixed.
+  test.beforeEach(async ({ page }, testInfo) => {
+    page.on('console', (msg) => {
+      // eslint-disable-next-line no-console
+      console.log(`[page.${msg.type()}] ${msg.text()}`);
+    });
+    page.on('pageerror', (err) => {
+      // eslint-disable-next-line no-console
+      console.log(`[pageerror] ${err.message}\n${err.stack ?? ''}`);
+    });
+    // eslint-disable-next-line no-console
+    console.log(`[diag] running: ${testInfo.title}`);
+  });
+
+  test('DIAG: probe MediaRecorder / OPFS support', async ({ page }) => {
+    await installCanvasGetDisplayMediaStub(page);
+    await page.goto('/');
+    const probe = await page.evaluate(() => {
+      const mimes = [
+        'video/mp4;codecs=av01.0.04M.08,opus',
+        'video/webm;codecs=av01,opus',
+        'video/webm;codecs=av01',
+        'video/mp4;codecs=av01',
+        'video/webm;codecs=vp9,opus',
+        'video/webm;codecs=vp9',
+        'video/webm',
+        'video/mp4',
+      ];
+      const w = window as unknown as { MediaRecorder?: typeof MediaRecorder };
+      const has = typeof w.MediaRecorder !== 'undefined';
+      const supported = has
+        ? mimes.filter((m) => {
+            try {
+              return MediaRecorder.isTypeSupported(m);
+            } catch {
+              return false;
+            }
+          })
+        : [];
+      const n = navigator as Navigator & { storage?: StorageManager };
+      return {
+        ua: navigator.userAgent,
+        hasMediaRecorder: has,
+        hasGetDisplayMedia: typeof navigator.mediaDevices?.getDisplayMedia === 'function',
+        hasOPFS:
+          typeof n.storage !== 'undefined' && typeof n.storage.getDirectory === 'function',
+        supportedMimes: supported,
+      };
+    });
+    // eslint-disable-next-line no-console
+    console.log('[probe]', JSON.stringify(probe, null, 2));
+  });
+
   test('transitions from Idle → REC … on toggle click', async ({ page }) => {
     await installCanvasGetDisplayMediaStub(page);
     await page.goto('/');
