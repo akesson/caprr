@@ -83,8 +83,22 @@ export interface CreateRecorderOptions {
   onSave?: (blob: Blob, meta: { name: string; viewport: Viewport; annotationCount: number }) => Promise<void> | void;
 }
 
-/** Returned by createRecorder. Stable handle for the lifetime of the page. */
-export interface Recorder {
+/** `'statechange'` event detail dispatched by Recorder on every transition. */
+export interface RecorderStateChangeDetail {
+  /** Previous state, or null on the very first dispatch (initial → idle). */
+  from: RecorderStateName | null;
+  to: RecorderStateName;
+}
+
+/** Returned by createRecorder. Stable handle for the lifetime of the page.
+ *  Extends EventTarget; subscribe to `'statechange'` for transition notifications:
+ *
+ *     rec.addEventListener('statechange', (e) => {
+ *       const detail = (e as CustomEvent<RecorderStateChangeDetail>).detail;
+ *       console.log(detail.from, '→', detail.to);
+ *     });
+ */
+export interface Recorder extends EventTarget {
   start(): Promise<void>;
   stop(): void;
   discard(): void;

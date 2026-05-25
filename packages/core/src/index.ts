@@ -22,19 +22,22 @@ import type { CreateRecorderOptions, Recorder } from './types';
 export const VERSION = '0.1.0';
 
 /** Construct and mount a recorder. When `opts.enabled === false` returns
- *  a no-op handle so callers can safely instantiate it in production. */
+ *  a no-op handle so callers can safely instantiate it in production.
+ *  The no-op still extends EventTarget so addEventListener calls don't
+ *  throw on consumers that subscribe unconditionally. */
 export const createRecorder = (opts: CreateRecorderOptions = {}): Recorder => {
   if (opts.enabled === false) {
-    return {
-      start: async () => {},
-      stop: () => {},
-      discard: () => {},
-      save: async () => {},
-      destroy: () => {},
-      get state() {
-        return 'idle' as const;
-      },
-    };
+    const noop = new EventTarget() as EventTarget & Partial<Recorder>;
+    noop.start = async () => {};
+    noop.stop = () => {};
+    noop.discard = () => {};
+    noop.save = async () => {};
+    noop.destroy = () => {};
+    Object.defineProperty(noop, 'state', {
+      get: () => 'idle' as const,
+      enumerable: true,
+    });
+    return noop as Recorder;
   }
   return createRecorderImpl(opts);
 };

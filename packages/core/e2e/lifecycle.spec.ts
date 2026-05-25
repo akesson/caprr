@@ -324,6 +324,49 @@ test.describe('recorder lifecycle (canvas-stream stub)', () => {
     expect(found.messages).toContain('e2e probe boom');
   });
 
+  test('Recorder dispatches "statechange" events with {from, to} detail', async ({ page }) => {
+    await installCanvasGetDisplayMediaStub(page);
+    await page.goto('/');
+
+    // Attach a listener early. The recorder mounts during page load; we
+    // miss the initial null → idle but every subsequent transition is
+    // captured.
+    await page.evaluate(() => {
+      const w = window as unknown as {
+        __caprr: EventTarget;
+        __caprrTransitions: { from: string | null; to: string }[];
+      };
+      w.__caprrTransitions = [];
+      w.__caprr.addEventListener('statechange', (e) => {
+        const detail = (e as CustomEvent).detail as { from: string | null; to: string };
+        w.__caprrTransitions.push(detail);
+      });
+    });
+
+    await page.click('#caprr-toggle');
+    await expect(page.locator('#caprr-status')).toContainText(/^REC /, { timeout: 5_000 });
+    await page.waitForTimeout(500);
+    await page.click('#caprr-toggle');
+    await expect(page.locator('#caprr-overlay')).toHaveAttribute('data-caprr-state', 'reviewing', {
+      timeout: 10_000,
+    });
+    await page.click('#caprr-discard');
+    await expect(page.locator('#caprr-status')).toHaveText('Idle');
+
+    const transitions = await page.evaluate(
+      () =>
+        (window as unknown as { __caprrTransitions: { from: string | null; to: string }[] })
+          .__caprrTransitions,
+    );
+
+    // Order: idle → starting → recording → reviewing → idle
+    expect(transitions.map((t) => t.to)).toEqual(['starting', 'recording', 'reviewing', 'idle']);
+    expect(transitions[0]!.from).toBe('idle');
+    expect(transitions[1]!.from).toBe('starting');
+    expect(transitions[2]!.from).toBe('recording');
+    expect(transitions[3]!.from).toBe('reviewing');
+  });
+
   test('destroy() removes the pill and the overlay from the document', async ({ page }) => {
     await installCanvasGetDisplayMediaStub(page);
     await page.goto('/');

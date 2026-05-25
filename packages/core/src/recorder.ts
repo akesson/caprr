@@ -21,7 +21,13 @@ import {
 } from './save';
 import { fullCleanup, initialState } from './state';
 import { makeTimeSource, type TimeSource } from './time';
-import type { CreateRecorderOptions, Recorder, RecorderStateName, RrwebPlayer } from './types';
+import type {
+  CreateRecorderOptions,
+  Recorder,
+  RecorderStateChangeDetail,
+  RecorderStateName,
+  RrwebPlayer,
+} from './types';
 import { createOverlay, createPill } from './ui';
 import { $, fmt, fmtBytes } from './util';
 
@@ -43,6 +49,11 @@ export const createRecorderImpl = (opts: CreateRecorderOptions): Recorder => {
   const overlay = createOverlay();
   document.body.appendChild(overlay);
   document.body.appendChild(pill);
+
+  // EventTarget that backs the public Recorder. Dispatches 'statechange'
+  // on every transition that applyState observes.
+  const events = new EventTarget();
+  let lastDispatched: RecorderStateName | null = null;
 
   const applyState = (): void => {
     const p = $('caprr-panel');
@@ -75,6 +86,16 @@ export const createRecorderImpl = (opts: CreateRecorderOptions): Recorder => {
         (toggle as HTMLButtonElement).disabled = false;
       }
       if (status) status.textContent = 'Reviewing';
+    }
+    if (lastDispatched !== s.state) {
+      const detail: RecorderStateChangeDetail = { from: lastDispatched, to: s.state };
+      lastDispatched = s.state;
+      try {
+        events.dispatchEvent(new CustomEvent('statechange', { detail }));
+      } catch {
+        // CustomEvent should never throw in supported browsers, but a
+        // misbehaving listener calling preventDefault() could; swallow.
+      }
     }
   };
 
@@ -466,30 +487,38 @@ export const createRecorderImpl = (opts: CreateRecorderOptions): Recorder => {
   applyState();
 
   // --- Public API ------------------------------------------------------
-  return {
-    start,
-    stop,
-    discard,
-    save,
-    destroy(): void {
-      try {
-        if (s.stopFn) s.stopFn();
-      } catch {
-        // noop
-      }
-      if (s.autoStopHandle) clearTimeout(s.autoStopHandle);
-      stopTicker();
-      teardownPlayer();
-      fullCleanup(s);
-      document.removeEventListener('click', onClick, true);
-      pillDrag.destroy();
-      cleanupNoteDrag();
-      pill.remove();
-      overlay.remove();
-      s.state = 'idle';
-    },
-    get state(): RecorderStateName {
-      return s.state;
-    },
+  // Compose the EventTarget instance with the Recorder methods. We use
+  // an explicit Object.defineProperty for `state` so it stays a getter
+  // (Object.assign would copy the resolved value once).
+  const destroy = (): void => {
+    try {
+      if (s.stopFn) s.stopFn();
+    } catch {
+      // noop
+    }
+    if (s.autoStopHandle) clearTimeout(s.autoStopHandle);
+    stopTicker();
+    teardownPlayer();
+    fullCleanup(s);
+    document.removeEventListener('click', onClick, true);
+    pillDrag.destroy();
+    cleanupNoteDrag();
+    pill.remove();
+    overlay.remove();
+    s.state = 'idle';
+    // Don't dispatch a final 'statechange' — destroy() implies caller is
+    // tearing down listeners anyway and we'd just race the unmount.
   };
+
+  const recorder = events as EventTarget & Partial<Recorder>;
+  recorder.start = start;
+  recorder.stop = stop;
+  recorder.discard = discard;
+  recorder.save = save;
+  recorder.destroy = destroy;
+  Object.defineProperty(recorder, 'state', {
+    get: (): RecorderStateName => s.state,
+    enumerable: true,
+  });
+  return recorder as Recorder;
 };
