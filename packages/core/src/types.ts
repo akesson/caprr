@@ -87,6 +87,13 @@ export interface CreateRecorderOptions {
    *  Chromium-only (Chrome 104+); on browsers without CropTarget the
    *  setting is silently ignored. Default 'fullTab' (no crop). */
   captureRegion?: 'fullTab' | 'self' | Element;
+  /** Pass through to rrweb.record({ recordCanvas }). Default `false`:
+   *  capturing canvas content is expensive (large incremental
+   *  snapshots, frequent emits) and surprises consumers whose apps
+   *  use a few small canvases for icons / sparklines but do not need
+   *  pixel replay. Opt in when the recorded app genuinely needs DOM
+   *  canvas state preserved across the rrweb replay. */
+  recordCanvas?: boolean;
   /** Optional sink for the saved Blob. If omitted, the file is downloaded. */
   onSave?: (blob: Blob, meta: { name: string; viewport: Viewport; annotationCount: number }) => Promise<void> | void;
 }

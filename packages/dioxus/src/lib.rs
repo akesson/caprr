@@ -86,6 +86,11 @@ pub fn Recorder(
     /// Capture window `error` + `unhandledrejection` events. Default `true`.
     #[props(default = true)]
     capture_errors: bool,
+    /// Pass through to rrweb's `recordCanvas` option. Default `false`
+    /// — canvas capture is expensive and rarely needed; opt in when
+    /// the recorded app genuinely uses canvas for pixel state.
+    #[props(default = false)]
+    record_canvas: bool,
 ) -> Element {
     if !enabled {
         return rsx! {};
@@ -93,7 +98,7 @@ pub fn Recorder(
 
     // Build the options JSON literal substituted into the boot script.
     let opts_json = format!(
-        r#"{{"maxRecordingMs":{max_recording_ms},"captureNetwork":{capture_network},"captureConsole":{capture_console},"captureErrors":{capture_errors}}}"#
+        r#"{{"maxRecordingMs":{max_recording_ms},"captureNetwork":{capture_network},"captureConsole":{capture_console},"captureErrors":{capture_errors},"recordCanvas":{record_canvas}}}"#
     );
     let boot = boot_script(&opts_json);
 

@@ -42,6 +42,7 @@ export const createRecorderImpl = (opts: CreateRecorderOptions): Recorder => {
   const captureConsole = opts.captureConsole ?? true;
   const captureErrors = opts.captureErrors ?? true;
   const requestedEncoder = opts.encoder ?? 'mediarecorder';
+  const recordCanvas = opts.recordCanvas ?? false;
 
   // --- UI ---------------------------------------------------------------
   const pill = createPill();
@@ -390,7 +391,7 @@ export const createRecorderImpl = (opts: CreateRecorderOptions): Recorder => {
     s.stopFn = record({
       // eslint-disable-next-line @typescript-eslint/no-explicit-any
       emit: (e: any) => s.eventsSink?.push(e),
-      recordCanvas: true,
+      recordCanvas,
       collectFonts: true,
       blockSelector: '#caprr-panel,#caprr-overlay',
       // eslint-disable-next-line @typescript-eslint/no-explicit-any
