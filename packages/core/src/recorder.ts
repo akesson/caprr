@@ -406,11 +406,16 @@ export const createRecorderImpl = (opts: CreateRecorderOptions): Recorder => {
     if (s.state !== 'reviewing') return;
     if (!s.videoBlob) return;
     const ext = extForMime(s.videoMime);
+    // Defensive deep copy: if an annotation is mutated between the
+    // await on the file-picker / onSave hook and the actual JSON
+    // serialization that follows, the saved file would otherwise see
+    // the mutated state. structuredClone is cheap relative to gzip and
+    // available across the full browser-support floor.
     const payload: SidecarPayloadV3 = {
       v: 3,
       recording: s.recording,
       events: s.events,
-      annotations: s.annotations,
+      annotations: structuredClone(s.annotations),
     };
     const compressed = await gzipBytes(new TextEncoder().encode(JSON.stringify(payload)));
     const sidecar = buildSidecar(compressed, ext === 'mp4' ? 'mp4' : 'webm');
