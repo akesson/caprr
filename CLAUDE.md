@@ -136,7 +136,12 @@ Tag-driven: `git tag v0.X.Y && git push --follow-tags` triggers `.github/workflo
 
 Validated end-to-end (record → annotate → save → sidecar roundtrip → VLC playback) on 2026-05-25: **Chromium ≥ 111, Firefox ≥ 110, Safari ≥ 17.** `preferCurrentTab` / `displaySurface: 'browser'` are Chromium-only picker hints — other browsers ignore them safely.
 
-`pickMime` is AV1-preferring with a VP9 fallback (Phase 1.4 — codec.ts). Per-browser, the recording side typically negotiates:
+Two encoder backends are available, selected via `opts.encoder`:
+
+- `'mediarecorder'` (default) — the legacy path. `pickMime` is AV1-preferring with a VP9 fallback (Phase 1.4 — codec.ts).
+- `'webcodecs'` (opt-in, Phase 5.1) — Mediabunny + WebCodecs `VideoEncoder` pipeline. Streams encoded chunks into the same OPFS sink the MediaRecorder path uses, producing fragmented MP4. Codec: prefers AV1 (Chrome 116+), falls back to VP9 (Firefox 130+ WebCodecs). The encoder module is dynamically imported so consumers on the default path do not pay the ~190 KB Mediabunny bundle cost (ESM/CJS only; UMD inlines).
+
+Per-browser, the recording side typically negotiates:
 
 | Browser | Likely produced codec | Notes |
 |---|---|---|

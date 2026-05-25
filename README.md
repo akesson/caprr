@@ -28,8 +28,11 @@ const rec = createRecorder({
   maxRecordingMs: 5 * 60_000,
   captureNetwork: true,
   captureConsole: true,
+  captureErrors: true,
+  // encoder: 'webcodecs', // opt-in: hardware AV1 via Mediabunny + WebCodecs
 });
 // rec.start() / rec.stop() / rec.discard() / rec.save() / rec.destroy()
+// rec.addEventListener('statechange', (e) => console.log(e.detail.from, '→', e.detail.to));
 ```
 
 ### Dioxus
