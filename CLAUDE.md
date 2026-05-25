@@ -80,6 +80,51 @@ The JSON payload is `SidecarPayloadV3` (`v: 3`) containing `recording.viewport`,
 - `destroy()` removes the document-level click listener, drags, timers, and DOM — call it from framework teardown (the Dioxus shim does this via `use_drop`).
 - `#caprr-panel` and `#caprr-overlay` are in `blockSelector` so the recorder's own UI never appears in its recordings.
 
+## Testing
+
+Three layers, in order of preference:
+
+**Vitest + jsdom (`packages/core`)** — pure-logic modules: `codec.ts` (mock `MediaRecorder.isTypeSupported`), `save.ts` (sidecar encode/decode roundtrips, EBML `Void` + MP4 `uuid` envelope framing on raw buffers), `util.ts`, `time.ts`. Fast, deterministic, no browser. Default to this when it suffices.
+
+**Playwright (headless Chromium) with a `getDisplayMedia` stub** — the lifecycle / integration layer. Replace `navigator.mediaDevices.getDisplayMedia` with a function that returns `canvas.captureStream(30)` so no permission picker is ever reached. Inject via `page.addInitScript(...)`. Downstream code — real `MediaRecorder`, real VP9 encode, real Blob assembly, real sidecar embedding — runs untouched, so you can assert on:
+
+- state transitions (`#caprr-status`: `Idle` → `REC …` → `Reviewing`)
+- rrweb event count + types (read `window.__caprr` if exposed, or intercept the saved blob)
+- WebM magic bytes `1a 45 df a3` on the produced blob
+- the two-blob pattern in `save.ts` (raw → sidecar-enriched; delta ≈ gzipped JSON size)
+- filename pattern (`caprr-YYYYMMDD-HHMMSS.webm`)
+- network + console plugin capture
+- the cancel path: a stub that throws `new DOMException('…', 'NotAllowedError')` should return state to `idle`
+- `destroy()` cleanup (no listeners, no DOM nodes left)
+
+Stub:
+
+```js
+const canvas = document.createElement('canvas');
+canvas.width = 640; canvas.height = 360;
+const ctx = canvas.getContext('2d');
+let f = 0;
+setInterval(() => {
+  ctx.fillStyle = `hsl(${(f * 7) % 360},80%,50%)`;
+  ctx.fillRect(0, 0, canvas.width, canvas.height);
+  ctx.fillText('frame ' + f++, 20, 60);
+}, 33);
+navigator.mediaDevices.getDisplayMedia = async () => canvas.captureStream(30);
+```
+
+The recorder reads `getDisplayMedia` lazily (on the Start click), so post-load injection works too, but `addInitScript` is the safer default. Chromium only — WebKit's `MediaRecorder` is weak; Firefox codec support drifts. Driveable IDs: `#caprr-toggle`, `#caprr-status`, `#caprr-save`, `#caprr-discard`, `#caprr-add-note`, `#caprr-overlay-status`, `#caprr-pane-video`, `#caprr-pane-dom`.
+
+**Manual** — anything where "does this *look* right?" is the test. The stubbed pixel source is solid-color squares, not the page, so any assertion on the pixel-video pane under automation is checking the stub, not the product. The following need a human:
+
+- **Annotation position fidelity** — a sticky note must land on the element the user clicked, in **both** the Pixel-video pane and the DOM-replay pane, at the same logical moment. Pixel and DOM anchors are computed independently (`annotations.ts`); cross-pane visual agreement is what's being validated.
+- **Time-sync across panes** — `time.ts` reconciles `<video>` time and rrweb-player time. Drift is a perception call.
+- **Real `getDisplayMedia` UX** — `preferCurrentTab`, `displaySurface: 'browser'`, current-tab auto-pick. The stub bypasses all of it.
+- **Recorder-UI invisibility in the recording** — `#caprr-panel` and `#caprr-overlay` are in `blockSelector` on the rrweb side, but only a real capture confirms they're also absent from the pixel video.
+- **Codec/container behavior outside Chromium** — Chrome's MP4 path, WebKit's MediaRecorder limits, Firefox VP9 drift.
+- **Pill drag feel** — movement threshold vs. accidental click.
+
+Run a manual pass before every release and on any change to `annotations.ts`, `time.ts`, `ui.ts`, `pill-drag.ts`, or `save.ts`'s container framing.
+
 ## Releasing
 
 Tag-driven: `git tag v0.X.Y && git push --follow-tags` triggers `.github/workflows/release.yml`, which publishes npm first (with provenance) and then crates.io. Required secrets: `NPM_TOKEN`, `CRATES_IO_TOKEN`. Version is duplicated in `packages/core/package.json` and `Cargo.toml` (workspace.package.version) — bump both.

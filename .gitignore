@@ -43,3 +43,6 @@ examples/*/dist/
 .DS_Store
 .vscode/
 .idea/
+
+# Playwright MCP scratch output (page snapshots, console logs)
+.playwright-mcp/
