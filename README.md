@@ -58,8 +58,9 @@ caprr/
 ├── examples/
 │   ├── plain-html/    # Vite + vanilla TS demo
 │   └── dioxus-app/    # minimal Dioxus app
-└── scripts/
-    └── vendor-dioxus-assets.mjs   # copies core/dist → dioxus/assets
+├── scripts/
+│   └── vendor-dioxus-assets.mjs   # copies core/dist → dioxus/assets
+└── rrwebui.pen        # Pencil design source — review-screen UX mockup
 ```
 
 ## Development
