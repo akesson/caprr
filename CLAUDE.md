@@ -18,6 +18,7 @@ pnpm install                 # workspace deps (uses pnpm@11, requires Node >=22.
 pnpm typecheck               # tsc --noEmit on packages/core
 pnpm build                   # → packages/core/dist (ESM, CJS, UMD, .d.ts, styles.css)
 pnpm test                    # vitest run on packages/core
+pnpm test:e2e                # playwright (chromium + firefox + webkit) — boots the plain-html example
 pnpm vendor:dioxus           # copy core/dist/{caprr.umd.js,styles.css} → dioxus/assets/
 
 # Rust workspace (members: packages/dioxus, examples/dioxus-app)
@@ -34,7 +35,7 @@ pnpm --filter caprr test -- path/to/file.test.ts
 pnpm --filter caprr test -- -t "test name"
 ```
 
-CI mirrors this exactly: `pnpm install --frozen-lockfile` → `pnpm typecheck` → `pnpm build`, then for the Rust job also `pnpm vendor:dioxus` before `cargo check / clippy / fmt`. See `.github/workflows/ci.yml`.
+CI mirrors this: `pnpm install --frozen-lockfile` → `pnpm typecheck` → `pnpm test` → `pnpm build`, a separate `e2e` job runs `pnpm test:e2e` across all three Playwright browsers (cached by version), then the Rust job runs `pnpm vendor:dioxus` before `cargo check / clippy / fmt`. See `.github/workflows/ci.yml`.
 
 ## Critical build dependency: JS → Rust
 
@@ -97,6 +98,8 @@ Three layers, in order of preference:
 - the cancel path: a stub that throws `new DOMException('…', 'NotAllowedError')` should return state to `idle`
 - `destroy()` cleanup (no listeners, no DOM nodes left)
 
+The Playwright matrix is **Chromium + Firefox + WebKit**; each project asserts on the codec the browser actually negotiated. The plain-html example reads `?test=1` and, in that mode, attaches an `onSave` that parks the saved Blob on `window.__caprrLastSavedBlob` so tests can assert on it without triggering the file picker. Reusable stubs live in `packages/core/e2e/fixtures.ts` (canvas-stream + NotAllowedError); both use `Object.defineProperty` on `navigator.mediaDevices.getDisplayMedia` because direct assignment is shadowed-but-not-effective on WebKit.
+
 Stub:
 
 ```js
@@ -112,7 +115,7 @@ setInterval(() => {
 navigator.mediaDevices.getDisplayMedia = async () => canvas.captureStream(30);
 ```
 
-The recorder reads `getDisplayMedia` lazily (on the Start click), so post-load injection works too, but `addInitScript` is the safer default. Headless Chromium is the only configured test target — `MediaRecorder` quality in WebKit and Firefox is anecdotally weaker but has not been measured here; see the Browser support section. Driveable IDs: `#caprr-toggle`, `#caprr-status`, `#caprr-save`, `#caprr-discard`, `#caprr-add-note`, `#caprr-overlay-status`, `#caprr-pane-video`, `#caprr-pane-dom`.
+The recorder reads `getDisplayMedia` lazily (on the Start click), so post-load injection works too, but `addInitScript` is the safer default. All three configured Playwright projects (Chromium, Firefox, WebKit) run headless against the canvas-stream stub; `MediaRecorder` quality across them is anecdotally uneven but has not been measured here — see the Browser support section. Driveable IDs: `#caprr-toggle`, `#caprr-status`, `#caprr-save`, `#caprr-discard`, `#caprr-add-note`, `#caprr-overlay-status`, `#caprr-pane-video`, `#caprr-pane-dom`.
 
 **Manual** — anything where "does this *look* right?" is the test. The stubbed pixel source is solid-color squares, not the page, so any assertion on the pixel-video pane under automation is checking the stub, not the product. The following need a human:
 
