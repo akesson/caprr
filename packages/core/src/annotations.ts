@@ -5,7 +5,7 @@
 
 import type { RecorderState } from './state';
 import type { TimeSource } from './time';
-import type { Annotation, AnnotationDom, RrwebReplayer } from './types';
+import type { Annotation, AnnotationDom } from './types';
 import { $, newId } from './util';
 
 /** Compute a CSS selector for an element. Priority order:
@@ -47,8 +47,8 @@ export const computeSelector = (elem: Element | null): string | null => {
   return parts.join(' > ');
 };
 
-/** Probe the rrweb-player's rebuilt iframe at its current playhead and
- *  return the DOM target under the given normalized stage coordinates.
+/** Probe the rrweb Replayer's rebuilt iframe at its current playhead
+ *  and return the DOM target under the given normalized stage coords.
  *
  *  Uses `elementsFromPoint` (plural) and walks the stack so a click that
  *  lands on a transparent overlay still resolves to the underlying
@@ -56,14 +56,7 @@ export const computeSelector = (elem: Element | null): string | null => {
  *  is unavailable. */
 const resolveDomTargetNow = (s: RecorderState, normX: number, normY: number): AnnotationDom | null => {
   if (!s.player) return null;
-  let replayer: RrwebReplayer | undefined;
-  try {
-    replayer = s.player.getReplayer();
-  } catch {
-    return null;
-  }
-  if (!replayer) return null;
-  const iframe = replayer.iframe;
+  const iframe = s.player.iframe;
   const doc = iframe && (iframe.contentDocument || iframe.contentWindow?.document);
   if (!doc || !doc.body) return null;
   const vp = s.recording?.viewport;
@@ -73,7 +66,7 @@ const resolveDomTargetNow = (s: RecorderState, normX: number, normY: number): An
 
   const mirror = (() => {
     try {
-      return typeof replayer.getMirror === 'function' ? replayer.getMirror() : null;
+      return typeof s.player.getMirror === 'function' ? s.player.getMirror() : null;
     } catch {
       return null;
     }
@@ -136,7 +129,7 @@ const resolveDomTargetAt = (s: RecorderState, tMs: number, normX: number, normY:
       return;
     }
     try {
-      s.player.goto(tMs, false);
+      s.player.pause(tMs);
     } catch {
       // fall through
     }
@@ -169,13 +162,12 @@ const positionForRender = (
 ): { left: number; top: number } => {
   if (s.activePane === 'dom' && a.dom && a.dom.rrweb_node_id != null && s.player) {
     try {
-      const replayer = s.player.getReplayer();
-      const mirror = replayer && typeof replayer.getMirror === 'function' ? replayer.getMirror() : null;
+      const mirror = typeof s.player.getMirror === 'function' ? s.player.getMirror() : null;
       const node = mirror && typeof mirror.getNode === 'function' ? mirror.getNode(a.dom.rrweb_node_id) : null;
-      if (replayer && node && typeof (node as Element).getBoundingClientRect === 'function') {
+      if (node && typeof (node as Element).getBoundingClientRect === 'function') {
         const er = (node as Element).getBoundingClientRect();
         if (er && (er.width || er.height)) {
-          const iframe = replayer.iframe;
+          const iframe = s.player.iframe;
           if (iframe) {
             const fr = iframe.getBoundingClientRect();
             const screenX = fr.left + er.left;

@@ -2,19 +2,22 @@ import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import type { RecorderState } from './state';
 import { initialState } from './state';
 import { makeTimeSource } from './time';
-import type { RrwebPlayer, RrwebReplayer } from './types';
+import type { RrwebPlayer } from './types';
 
 /**
  * `makeTimeSource` is a thin pane-aware shim over a <video> element
- * and an rrweb-player instance. These tests stub both sides and assert
- * each public method routes correctly.
+ * and an rrweb Replayer instance. These tests stub both sides and
+ * assert each public method routes correctly.
+ *
+ * Phase 6.1 replaced the Svelte rrweb-player wrapper with the
+ * Replayer class directly — `player.goto(tMs, false)` became
+ * `player.pause(tMs)`, and `getCurrentTime`/`getMirror`/`iframe`
+ * live on the player itself rather than under `getReplayer()`.
  */
 
 const mountVideo = (currentSec = 0): HTMLVideoElement => {
   const v = document.createElement('video');
   v.id = 'caprr-video';
-  // jsdom's <video> has currentTime as a no-op accessor; we override it
-  // so we can read what was written.
   let cur = currentSec;
   Object.defineProperty(v, 'currentTime', {
     get: () => cur,
@@ -28,23 +31,21 @@ const mountVideo = (currentSec = 0): HTMLVideoElement => {
   return v;
 };
 
-const makeFakeReplayer = (currentMs = 0): RrwebReplayer & {
-  getCurrentTime: ReturnType<typeof vi.fn>;
-} => ({
-  iframe: document.createElement('iframe'),
-  getMirror: vi.fn(),
-  getCurrentTime: vi.fn(() => currentMs),
-});
-
-const makeFakePlayer = (replayer: RrwebReplayer): RrwebPlayer & {
-  goto: ReturnType<typeof vi.fn>;
+const makeFakePlayer = (
+  currentMs = 0,
+): RrwebPlayer & {
   pause: ReturnType<typeof vi.fn>;
   play: ReturnType<typeof vi.fn>;
+  destroy: ReturnType<typeof vi.fn>;
+  getCurrentTime: ReturnType<typeof vi.fn>;
+  getMirror: ReturnType<typeof vi.fn>;
 } => ({
-  goto: vi.fn(),
+  iframe: document.createElement('iframe'),
   pause: vi.fn(),
   play: vi.fn(),
-  getReplayer: () => replayer,
+  destroy: vi.fn(),
+  getCurrentTime: vi.fn(() => currentMs),
+  getMirror: vi.fn(),
 });
 
 const stateWith = (
@@ -75,9 +76,8 @@ describe('TimeSource.current', () => {
     expect(time.current).toBe(1234);
   });
 
-  it('reads replayer.getCurrentTime() when pane is "dom"', () => {
-    const replayer = makeFakeReplayer(2_500);
-    const player = makeFakePlayer(replayer);
+  it('reads player.getCurrentTime() when pane is "dom"', () => {
+    const player = makeFakePlayer(2_500);
     const s = stateWith({ activePane: 'dom', player });
     const time = makeTimeSource(s);
     expect(time.current).toBe(2_500);
@@ -95,15 +95,11 @@ describe('TimeSource.current', () => {
     expect(time.current).toBe(0);
   });
 
-  it('returns 0 on dom pane when getReplayer throws', () => {
-    const player = {
-      goto: vi.fn(),
-      pause: vi.fn(),
-      play: vi.fn(),
-      getReplayer: vi.fn(() => {
-        throw new Error('boom');
-      }),
-    } as unknown as RrwebPlayer;
+  it('returns 0 on dom pane when getCurrentTime throws', () => {
+    const player = makeFakePlayer(0);
+    player.getCurrentTime.mockImplementation(() => {
+      throw new Error('boom');
+    });
     const s = stateWith({ activePane: 'dom', player });
     const time = makeTimeSource(s);
     expect(time.current).toBe(0);
@@ -111,15 +107,14 @@ describe('TimeSource.current', () => {
 });
 
 describe('TimeSource.seek', () => {
-  it('writes video.currentTime in seconds AND calls player.goto in ms', () => {
+  it('writes video.currentTime in seconds AND calls player.pause(tMs)', () => {
     video = mountVideo(0);
-    const replayer = makeFakeReplayer();
-    const player = makeFakePlayer(replayer);
+    const player = makeFakePlayer();
     const s = stateWith({ activePane: 'video', player });
     const time = makeTimeSource(s);
     time.seek(3_500);
     expect(video.currentTime).toBeCloseTo(3.5, 5);
-    expect(player.goto).toHaveBeenCalledWith(3_500, false);
+    expect(player.pause).toHaveBeenCalledWith(3_500);
   });
 
   it('pauses the video before seeking', () => {
@@ -140,8 +135,7 @@ describe('TimeSource.seek', () => {
 describe('TimeSource.pause', () => {
   it('pauses both the video and the player', () => {
     video = mountVideo(0);
-    const replayer = makeFakeReplayer();
-    const player = makeFakePlayer(replayer);
+    const player = makeFakePlayer();
     const s = stateWith({ activePane: 'video', player });
     const time = makeTimeSource(s);
     time.pause();

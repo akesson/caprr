@@ -9,23 +9,21 @@ export interface RrwebEvent {
   data: unknown;
 }
 
-/** The Svelte-wrapper player exposes a small public API on top of the
- *  underlying Replayer. We only call the bits listed here. */
+/** The slice of the rrweb `Replayer` surface caprr depends on. This used
+ *  to be a Svelte wrapper (`rrweb-player` 1.0.0-alpha.4) — Phase 6.1
+ *  swapped that out for the underlying Replayer from `rrweb` directly,
+ *  removing a Svelte runtime dependency and the CJS/ESM interop hack. */
 export interface RrwebPlayer {
-  goto(timeMs: number, play?: boolean): void;
-  pause(): void;
-  play(): void;
-  getReplayer(): RrwebReplayer | undefined;
-  addEventListener?(name: string, handler: () => void): void;
-  $destroy?: () => void;
+  play(timeOffset?: number): void;
+  pause(timeOffset?: number): void;
+  getCurrentTime(): number;
+  getMirror(): RrwebMirror;
+  destroy(): void;
+  iframe: HTMLIFrameElement;
 }
 
-/** The underlying Replayer (rebuilds the DOM into an iframe). */
-export interface RrwebReplayer {
-  iframe: HTMLIFrameElement;
-  getMirror?: () => RrwebMirror;
-  getCurrentTime?: () => number;
-}
+/** Alias kept for backward import compatibility with internal callers. */
+export type RrwebReplayer = RrwebPlayer;
 
 /** The Mirror keeps a numeric id ↔ Node mapping for the rebuilt DOM. */
 export interface RrwebMirror {

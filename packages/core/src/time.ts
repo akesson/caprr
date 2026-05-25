@@ -20,14 +20,11 @@ export const makeTimeSource = (s: RecorderState): TimeSource => ({
       const v = $<HTMLVideoElement>('caprr-video');
       return v ? Math.round((v.currentTime || 0) * 1000) : 0;
     }
-    // rrweb-player 1.0.0-alpha.4 doesn't expose getCurrentTime on the
-    // Svelte wrapper — the method lives on the underlying Replayer.
-    if (s.player && typeof s.player.getReplayer === 'function') {
+    // Phase 6.1 swapped the Svelte rrweb-player wrapper for the
+    // underlying Replayer directly, so getCurrentTime lives on s.player.
+    if (s.player && typeof s.player.getCurrentTime === 'function') {
       try {
-        const r = s.player.getReplayer();
-        if (r && typeof r.getCurrentTime === 'function') {
-          return Math.round(r.getCurrentTime() || 0);
-        }
+        return Math.round(s.player.getCurrentTime() || 0);
       } catch {
         // fall through
       }
@@ -48,9 +45,11 @@ export const makeTimeSource = (s: RecorderState): TimeSource => ({
         /* noop */
       }
     }
-    if (s.player && typeof s.player.goto === 'function') {
+    // Replayer.pause(tMs) seeks and pauses at the given offset — what
+    // the Svelte wrapper's player.goto(tMs, false) used to do.
+    if (s.player && typeof s.player.pause === 'function') {
       try {
-        s.player.goto(tMs, false);
+        s.player.pause(tMs);
       } catch {
         /* noop */
       }

@@ -1,10 +1,9 @@
 /** State machine + lifecycle. Connects state, time source, UI, plugins,
  *  save flow, and annotations into a single coherent `Recorder`. */
 
-import { record } from 'rrweb';
-import RrwebPlayerCtor from 'rrweb-player';
+import { record, Replayer } from 'rrweb';
 import { getRecordConsolePlugin } from '@rrweb/rrweb-plugin-console-record';
-import 'rrweb-player/dist/style.css';
+import 'rrweb/dist/style.css';
 import './styles.css';
 
 import { addNote, installNoteDrag, renderAnnotations } from './annotations';
@@ -27,14 +26,12 @@ import type {
   RecorderStateChangeDetail,
   RecorderStateName,
   RrwebEvent,
-  RrwebPlayer,
 } from './types';
 import { createOverlay, createPill } from './ui';
 import { $, fmt, fmtBytes } from './util';
 
 const MAX_RECORDING_MS_DEFAULT = 5 * 60 * 1000;
 const TIMESLICE_MS = 250;
-const RRWEB_PLAYER_CONTROLLER_H = 80;
 
 /** All the pieces wired together. Returns a public `Recorder` handle. */
 export const createRecorderImpl = (opts: CreateRecorderOptions): Recorder => {
@@ -154,18 +151,18 @@ export const createRecorderImpl = (opts: CreateRecorderOptions): Recorder => {
     s.state = 'reviewing';
     applyState();
     const stageRect = stage.getBoundingClientRect();
-    // eslint-disable-next-line @typescript-eslint/no-explicit-any
-    const PlayerCtor = ((RrwebPlayerCtor as any).default ?? RrwebPlayerCtor) as new (args: unknown) => RrwebPlayer;
-    s.player = new PlayerCtor({
-      target: host,
-      props: {
-        events: s.events,
-        autoPlay: false,
-        showController: true,
-        width: Math.max(320, Math.floor(stageRect.width)),
-        height: Math.max(120, Math.floor(stageRect.height) - RRWEB_PLAYER_CONTROLLER_H),
-      },
+    s.player = new Replayer(s.events, {
+      root: host,
+      showWarning: false,
+      // The video pane is the time source; the DOM pane is a visual
+      // mirror. Pause at t=0 so a user landing on the DOM pane sees
+      // the initial snapshot rather than playback racing on its own.
     });
+    s.player.pause(0);
+    // Match the iframe size to the stage so annotation positions
+    // computed via positionForRender map correctly. The iframe is
+    // resized via CSS in styles.css; nothing to do here.
+    void stageRect;
     // Drive annotation re-render off `requestVideoFrameCallback` when the
     // host browser supports it (Chrome ≥ 83, Safari ≥ 15.4; Firefox added
     // it in 132). That fires once per painted video frame instead of the
@@ -192,15 +189,9 @@ export const createRecorderImpl = (opts: CreateRecorderOptions): Recorder => {
         if (s.activePane === 'video') renderAnnotations(s, time);
       });
     }
-    try {
-      if (s.player && typeof s.player.addEventListener === 'function') {
-        s.player.addEventListener('ui-update-current-time', () => {
-          if (s.activePane === 'dom') renderAnnotations(s, time);
-        });
-      }
-    } catch (e) {
-      console.warn('[caprr] player.addEventListener failed', e);
-    }
+    // The Replayer doesn't emit a 'time' event the same way the Svelte
+    // wrapper did. domTick() (rAF below) polls replayer.getCurrentTime()
+    // for DOM-pane updates instead.
     let lastDomTick = -1;
     const domTick = (): void => {
       if (s.state !== 'reviewing') return;
@@ -246,7 +237,7 @@ export const createRecorderImpl = (opts: CreateRecorderOptions): Recorder => {
       s.stageResizeObserver = null;
     }
     try {
-      if (s.player && s.player.$destroy) s.player.$destroy();
+      if (s.player && typeof s.player.destroy === 'function') s.player.destroy();
     } catch {
       // noop
     }
