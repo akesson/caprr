@@ -141,6 +141,115 @@ test.describe('recorder lifecycle (canvas-stream stub)', () => {
     await expect(page.locator('#caprr-overlay')).toHaveAttribute('data-caprr-state', 'idle');
   });
 
+  test('PerformanceObserver captures fetch + img + script + style in the sidecar', async ({ page }) => {
+    await installCanvasGetDisplayMediaStub(page);
+    await page.goto('/?test=1');
+
+    await page.click('#caprr-toggle');
+    await expect(page.locator('#caprr-status')).toContainText(/^REC /, { timeout: 5_000 });
+
+    // Trigger four distinct initiator types. These are issued AFTER the
+    // observer attaches; `buffered: true` would also include pre-record
+    // resources but we don't rely on that here.
+    await page.evaluate(async () => {
+      // 1. fetch
+      try {
+        await fetch('/no-such-resource-fetch');
+      } catch {
+        // ok — even a 404 produces a PerformanceResourceTiming
+      }
+
+      // 2. img — append and await load (or error; both record)
+      await new Promise<void>((resolve) => {
+        const img = document.createElement('img');
+        img.src = '/no-such-resource-img.png';
+        img.onload = () => resolve();
+        img.onerror = () => resolve();
+        document.body.appendChild(img);
+      });
+
+      // 3. script
+      await new Promise<void>((resolve) => {
+        const s = document.createElement('script');
+        s.src = '/no-such-resource-script.js';
+        s.onload = () => resolve();
+        s.onerror = () => resolve();
+        document.head.appendChild(s);
+      });
+
+      // 4. css via <link rel="stylesheet">
+      await new Promise<void>((resolve) => {
+        const l = document.createElement('link');
+        l.rel = 'stylesheet';
+        l.href = '/no-such-resource.css';
+        l.onload = () => resolve();
+        l.onerror = () => resolve();
+        document.head.appendChild(l);
+      });
+    });
+
+    // Let the PerformanceObserver flush.
+    await page.waitForTimeout(400);
+    await page.click('#caprr-toggle');
+    await expect(page.locator('#caprr-overlay')).toHaveAttribute('data-caprr-state', 'reviewing', {
+      timeout: 10_000,
+    });
+    await page.click('#caprr-save');
+    await expect(page.locator('#caprr-status')).toHaveText('Idle', { timeout: 10_000 });
+
+    const summary = await page.evaluate(async () => {
+      const b = (window as unknown as { __caprrLastSavedBlob?: Blob }).__caprrLastSavedBlob;
+      if (!b) return { ok: false, reason: 'no blob' } as const;
+      const buf = new Uint8Array(await b.arrayBuffer());
+      const marker = new TextEncoder().encode('rrwebspd-events!');
+      let idx = -1;
+      outer: for (let i = 0; i <= buf.length - marker.length; i++) {
+        for (let j = 0; j < marker.length; j++) {
+          if (buf[i + j] !== marker[j]) continue outer;
+        }
+        idx = i + marker.length;
+        break;
+      }
+      if (idx < 0) return { ok: false, reason: 'no marker' } as const;
+      const gz = buf.slice(idx);
+      const stream = new Response(gz).body!.pipeThrough(new DecompressionStream('gzip'));
+      const dec = new Uint8Array(await new Response(stream).arrayBuffer());
+      const payload = JSON.parse(new TextDecoder().decode(dec)) as {
+        events: { type: number; data: unknown }[];
+      };
+      const netEvents = payload.events.filter(
+        (e) =>
+          e.type === 6 &&
+          typeof e.data === 'object' &&
+          e.data !== null &&
+          'plugin' in e.data &&
+          (e.data as { plugin?: unknown }).plugin === 'rrweb/network@2',
+      );
+      const kinds = new Set(
+        netEvents.map(
+          (e) => (e.data as { payload?: { kind?: string } }).payload?.kind ?? null,
+        ),
+      );
+      return { ok: true, count: netEvents.length, kinds: [...kinds] } as const;
+    });
+
+    expect(summary.ok, !summary.ok ? summary.reason : '').toBe(true);
+    if (summary.ok) {
+      expect(summary.count).toBeGreaterThan(0);
+      // We expect at least three of: fetch, img, script, css.
+      // Different browsers may attribute differently (e.g. WebKit can label
+      // the canvas-capture-stream init as `other`); assert breadth, not
+      // an exact set.
+      const seen = new Set(summary.kinds);
+      const expectedKinds = ['fetch', 'img', 'script', 'css'] as const;
+      const matched = expectedKinds.filter((k) => seen.has(k));
+      expect(
+        matched.length,
+        `expected at least 3 of fetch/img/script/css; saw kinds=${JSON.stringify(summary.kinds)}`,
+      ).toBeGreaterThanOrEqual(3);
+    }
+  });
+
   test('window error during recording lands in the sidecar as a plugin event', async ({ page }) => {
     await installCanvasGetDisplayMediaStub(page);
     await page.goto('/?test=1');

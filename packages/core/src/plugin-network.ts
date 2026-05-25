@@ -1,136 +1,135 @@
-/** rrweb plugin that monkey-patches window.fetch and window.XMLHttpRequest
- *  to emit one type-6 (Plugin) event per request with method / url /
- *  status / duration / content-length / content-type — metadata only,
- *  never request or response bodies.
+/** rrweb plugin: capture resource-fetch metadata via
+ *  `PerformanceObserver({type:'resource', buffered:true})`. Unlike the
+ *  previous fetch+XHR monkey-patch implementation, this hooks no globals
+ *  and captures EVERY resource the page loads — fetch, XHR, images,
+ *  stylesheets, scripts, fonts, beacons, video, audio.
  *
- *  WebSocket is intentionally NOT patched here. Real apps (e.g. the
- *  LeaveDates pusher-interop crate) hot-path WebSocket and we don't want
- *  to risk subtly breaking them.
+ *  Trade-offs versus the monkey-patch approach:
  *
- *  Patches are scoped to the recording: the observer's returned cleanup
- *  restores the originals when rrweb.record() stops. */
+ *  - WIN: no instance / prototype mutation. Host apps that observe
+ *    `XMLHttpRequest`'s identity or wrap `window.fetch` themselves are
+ *    no longer at risk of being broken.
+ *  - WIN: breadth — img/css/script/font/beacon all observable.
+ *  - LOSS: PerformanceResourceTiming does not expose the request
+ *    METHOD. Everything is recorded without a method; consumers should
+ *    treat GET as the default.
+ *  - LOSS: it also doesn't expose `Content-Type`. We get sizes and
+ *    `initiatorType` but not the served MIME.
+ *  - LOSS: failures (TypeError, AbortError, CORS rejections) do not
+ *    produce a resource entry, so the previous `.error` field on the
+ *    event is gone. The plugin is silent on failed loads.
+ *
+ *  Bumped plugin name from `rrweb/network@1` (the monkey-patch era) to
+ *  `rrweb/network@2` so sidecar readers can distinguish payload shapes.
+ *  An older reader that only knew @1 still sees the @2 events as
+ *  type-6 with a recognizable plugin name — it can opt to skip them or
+ *  upcast its decoder. */
 
-export interface NetworkEventMeta {
-  kind: 'fetch' | 'xhr';
-  method: string;
+export interface NetworkEventMetaV2 {
+  /** Broader than the @1 enum — covers all PerformanceObserver
+   *  initiator types we may see in the wild. */
+  kind:
+    | 'fetch'
+    | 'xmlhttprequest'
+    | 'img'
+    | 'css'
+    | 'script'
+    | 'font'
+    | 'video'
+    | 'audio'
+    | 'beacon'
+    | 'other';
   url: string;
+  /** Optional — PerformanceResourceTiming.responseStatus is Chromium 109+,
+   *  Safari 17+, Firefox 128+. Below those versions it's undefined. */
   status?: number;
-  ok?: boolean;
-  redirected?: boolean;
-  contentType: string | null;
-  contentLength: number | null;
+  /** Bytes over the wire including headers. 0 for cache hits / CORS-tainted. */
+  transferSize: number | null;
+  /** Body bytes as encoded (e.g. gzipped). */
+  encodedBodySize: number | null;
+  /** Body bytes as decoded by the browser. */
+  decodedBodySize: number | null;
   durationMs: number;
+  /** Wall-clock ms (Date.now()-equivalent) computed from
+   *  `performance.timeOrigin + entry.startTime`. */
   timestamp: number;
-  error?: string;
 }
 
-type EmitCb = (data: NetworkEventMeta) => void;
+/** Back-compat alias for callers still importing the old name. */
+export type NetworkEventMeta = NetworkEventMetaV2;
+
+type EmitCb = (data: NetworkEventMetaV2) => void;
 
 interface RrwebPlugin {
   name: string;
   observer: (cb: EmitCb, win: Window) => () => void;
 }
 
+/** Public for test reach-in. Maps PerformanceResourceTiming.initiatorType
+ *  (a wide, browser-dependent string) onto the discriminated `kind`
+ *  enum. Unknown values fold to `'other'`. */
+export const mapInitiatorType = (it: string): NetworkEventMetaV2['kind'] => {
+  switch (it) {
+    case 'fetch':
+    case 'xmlhttprequest':
+    case 'img':
+    case 'css':
+    case 'script':
+    case 'font':
+    case 'video':
+    case 'audio':
+    case 'beacon':
+      return it;
+    // Some browsers report 'link' for <link rel="stylesheet">; collapse.
+    case 'link':
+      return 'css';
+    default:
+      return 'other';
+  }
+};
+
+/** Public for test reach-in. Turn a single entry into our shape. */
+export const toMeta = (entry: PerformanceResourceTiming, win: Window): NetworkEventMetaV2 => {
+  // entry.startTime is high-resolution time since performance.timeOrigin.
+  // Compose with timeOrigin to get a real wall-clock value.
+  const origin = win.performance?.timeOrigin ?? 0;
+  const status =
+    'responseStatus' in entry && typeof (entry as { responseStatus?: number }).responseStatus === 'number'
+      ? (entry as { responseStatus: number }).responseStatus
+      : undefined;
+  return {
+    kind: mapInitiatorType(entry.initiatorType),
+    url: entry.name,
+    ...(status !== undefined ? { status } : {}),
+    transferSize: Number.isFinite(entry.transferSize) ? entry.transferSize : null,
+    encodedBodySize: Number.isFinite(entry.encodedBodySize) ? entry.encodedBodySize : null,
+    decodedBodySize: Number.isFinite(entry.decodedBodySize) ? entry.decodedBodySize : null,
+    durationMs: Math.round(entry.duration),
+    timestamp: Math.round(origin + entry.startTime),
+  };
+};
+
 export const buildNetworkPlugin = (): RrwebPlugin => ({
-  name: 'rrweb/network@1',
+  name: 'rrweb/network@2',
   observer: (cb, win) => {
-    const origFetch = win.fetch;
-    const OrigXHR = (win as Window & { XMLHttpRequest: typeof XMLHttpRequest }).XMLHttpRequest;
-    const now = (): number => (win.performance ? win.performance.now() : Date.now());
-
-    win.fetch = async function patchedFetch(input: RequestInfo | URL, init?: RequestInit): Promise<Response> {
-      const start = now();
-      const reqUrl =
-        typeof input === 'string'
-          ? input
-          : input instanceof URL
-            ? input.toString()
-            : ((input as Request).url ?? '');
-      const reqMethod =
-        init?.method ?? (typeof input === 'object' && 'method' in input ? (input as Request).method : null) ?? 'GET';
-      try {
-        const res = await origFetch.call(win, input, init);
-        const cl = res.headers.get('content-length');
-        cb({
-          kind: 'fetch',
-          method: reqMethod,
-          url: reqUrl,
-          status: res.status,
-          ok: res.ok,
-          redirected: res.redirected,
-          contentType: res.headers.get('content-type'),
-          contentLength: cl ? parseInt(cl, 10) : null,
-          durationMs: Math.round(now() - start),
-          timestamp: Date.now(),
-        });
-        return res;
-      } catch (e) {
-        cb({
-          kind: 'fetch',
-          method: reqMethod,
-          url: reqUrl,
-          contentType: null,
-          contentLength: null,
-          error: String((e instanceof Error && e.message) || e),
-          durationMs: Math.round(now() - start),
-          timestamp: Date.now(),
-        });
-        throw e;
-      }
-    };
-
-    // XHR: wrap the constructor so each instance's send() is timed and its
-    // loadend emits a metadata event. Preserve XHR's static readyState
-    // constants so callers that reference XMLHttpRequest.DONE etc still work.
-    function PatchedXHR(this: XMLHttpRequest): XMLHttpRequest {
-      const xhr = new OrigXHR();
-      let m = 'GET';
-      let u = '';
-      let start = 0;
-      const origOpen = xhr.open.bind(xhr);
-      xhr.open = function (method: string, url: string | URL, ...rest: unknown[]): void {
-        m = method;
-        u = typeof url === 'string' ? url : url.toString();
-        // The .open signature is variadic-overloaded; cast to any to forward all args.
-        // eslint-disable-next-line @typescript-eslint/no-explicit-any
-        return (origOpen as any)(method, url, ...rest);
-      };
-      const origSend = xhr.send.bind(xhr);
-      xhr.send = function (body?: Document | XMLHttpRequestBodyInit | null): void {
-        start = now();
-        xhr.addEventListener(
-          'loadend',
-          () => {
-            const lenHeader = xhr.getResponseHeader('content-length') ?? '';
-            cb({
-              kind: 'xhr',
-              method: m,
-              url: u,
-              status: xhr.status,
-              contentType: xhr.getResponseHeader('content-type'),
-              contentLength: parseInt(lenHeader, 10) || null,
-              durationMs: Math.round(now() - start),
-              timestamp: Date.now(),
-            });
-          },
-          { once: true },
-        );
-        return origSend(body);
-      };
-      return xhr;
+    const POCtor = (win as Window & { PerformanceObserver?: typeof PerformanceObserver }).PerformanceObserver;
+    if (typeof POCtor !== 'function') {
+      // Host doesn't implement PerformanceObserver — silently no-op.
+      // The support floor (Chromium 111 / FF 110 / Safari 17) guarantees
+      // this branch should never fire in production, but a defensive
+      // bailout is cheaper than a runtime crash if the floor moves.
+      return () => {};
     }
-    (['UNSENT', 'OPENED', 'HEADERS_RECEIVED', 'LOADING', 'DONE'] as const).forEach((k) => {
-      // eslint-disable-next-line @typescript-eslint/no-explicit-any
-      (PatchedXHR as any)[k] = (OrigXHR as any)[k];
+    const po = new POCtor((list) => {
+      for (const entry of list.getEntries()) {
+        if (entry.entryType !== 'resource') continue;
+        cb(toMeta(entry as PerformanceResourceTiming, win));
+      }
     });
-    PatchedXHR.prototype = OrigXHR.prototype;
-    // eslint-disable-next-line @typescript-eslint/no-explicit-any
-    (win as Window & { XMLHttpRequest: typeof XMLHttpRequest }).XMLHttpRequest = PatchedXHR as any;
-
-    return () => {
-      win.fetch = origFetch;
-      // eslint-disable-next-line @typescript-eslint/no-explicit-any
-      (win as Window & { XMLHttpRequest: typeof XMLHttpRequest }).XMLHttpRequest = OrigXHR as any;
-    };
+    // `buffered: true` replays entries from before the observer attached,
+    // so a recording started a few ms after page load still sees the
+    // initial document subresources.
+    po.observe({ type: 'resource', buffered: true });
+    return () => po.disconnect();
   },
 });
