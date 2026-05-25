@@ -10,6 +10,7 @@ import './styles.css';
 import { addNote, installNoteDrag, renderAnnotations } from './annotations';
 import { extForMime, pickMime } from './codec';
 import { installPillDrag, restorePillPos } from './pill-drag';
+import { buildErrorsPlugin } from './plugin-errors';
 import { buildNetworkPlugin } from './plugin-network';
 import {
   buildSidecar,
@@ -35,6 +36,7 @@ export const createRecorderImpl = (opts: CreateRecorderOptions): Recorder => {
   const maxRecordingMs = opts.maxRecordingMs ?? MAX_RECORDING_MS_DEFAULT;
   const captureNetwork = opts.captureNetwork ?? true;
   const captureConsole = opts.captureConsole ?? true;
+  const captureErrors = opts.captureErrors ?? true;
 
   // --- UI ---------------------------------------------------------------
   const pill = createPill();
@@ -274,6 +276,7 @@ export const createRecorderImpl = (opts: CreateRecorderOptions): Recorder => {
     const plugins: unknown[] = [];
     if (captureConsole) plugins.push(getRecordConsolePlugin());
     if (captureNetwork) plugins.push(buildNetworkPlugin());
+    if (captureErrors) plugins.push(buildErrorsPlugin());
 
     s.stopFn = record({
       // eslint-disable-next-line @typescript-eslint/no-explicit-any

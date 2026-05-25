@@ -10,10 +10,12 @@ import { test as base, type Page } from '@playwright/test';
  * `getDisplayMedia` lazily (on the Start click), so injecting via
  * `addInitScript` is plenty early.
  */
-// getDisplayMedia is exposed via MediaDevices.prototype in some browsers
-// (notably WebKit), so a plain assignment can shadow with an own property
-// but doesn't always take precedence at lookup time. Use defineProperty
-// with explicit descriptor for cross-browser reliability.
+// getDisplayMedia lives on MediaDevices.prototype. Patching the prototype
+// itself is the most reliable cross-browser hook: under WebKit,
+// `navigator.mediaDevices` can return distinct instances over the page's
+// lifetime, so a defineProperty on the instance is sometimes lost. The
+// prototype patch is in effect for every lookup regardless of which
+// MediaDevices instance the spec hands out.
 const CANVAS_STREAM_STUB = `
 (() => {
   const canvas = document.createElement('canvas');
@@ -29,14 +31,26 @@ const CANVAS_STREAM_STUB = `
     ctx.fillText('frame ' + f++, 20, 60);
   }, 33);
 
-  if (!navigator.mediaDevices) {
-    Object.defineProperty(navigator, 'mediaDevices', { value: {}, configurable: true });
+  const stub = async () => canvas.captureStream(30);
+  const target = (typeof MediaDevices !== 'undefined' && MediaDevices.prototype) || null;
+  if (target) {
+    Object.defineProperty(target, 'getDisplayMedia', {
+      value: stub,
+      configurable: true,
+      writable: true,
+    });
+  } else {
+    // Headless contexts without a MediaDevices class — fall back to the
+    // instance pattern.
+    if (!navigator.mediaDevices) {
+      Object.defineProperty(navigator, 'mediaDevices', { value: {}, configurable: true });
+    }
+    Object.defineProperty(navigator.mediaDevices, 'getDisplayMedia', {
+      value: stub,
+      configurable: true,
+      writable: true,
+    });
   }
-  Object.defineProperty(navigator.mediaDevices, 'getDisplayMedia', {
-    value: async () => canvas.captureStream(30),
-    configurable: true,
-    writable: true,
-  });
 })();
 `;
 
@@ -48,14 +62,24 @@ export const installCanvasGetDisplayMediaStub = async (page: Page): Promise<void
  *  the user-cancelled-the-picker path in recorder.ts:start. */
 const NOT_ALLOWED_STUB = `
 (() => {
-  if (!navigator.mediaDevices) {
-    Object.defineProperty(navigator, 'mediaDevices', { value: {}, configurable: true });
+  const stub = async () => { throw new DOMException('user denied', 'NotAllowedError'); };
+  const target = (typeof MediaDevices !== 'undefined' && MediaDevices.prototype) || null;
+  if (target) {
+    Object.defineProperty(target, 'getDisplayMedia', {
+      value: stub,
+      configurable: true,
+      writable: true,
+    });
+  } else {
+    if (!navigator.mediaDevices) {
+      Object.defineProperty(navigator, 'mediaDevices', { value: {}, configurable: true });
+    }
+    Object.defineProperty(navigator.mediaDevices, 'getDisplayMedia', {
+      value: stub,
+      configurable: true,
+      writable: true,
+    });
   }
-  Object.defineProperty(navigator.mediaDevices, 'getDisplayMedia', {
-    value: async () => { throw new DOMException('user denied', 'NotAllowedError'); },
-    configurable: true,
-    writable: true,
-  });
 })();
 `;
 

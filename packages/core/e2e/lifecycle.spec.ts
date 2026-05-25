@@ -128,6 +128,80 @@ test.describe('recorder lifecycle (canvas-stream stub)', () => {
     await expect(page.locator('#caprr-overlay')).toHaveAttribute('data-caprr-state', 'idle');
   });
 
+  test('window error during recording lands in the sidecar as a plugin event', async ({ page }) => {
+    await installCanvasGetDisplayMediaStub(page);
+    await page.goto('/?test=1');
+
+    await page.click('#caprr-toggle');
+    await expect(page.locator('#caprr-status')).toContainText(/^REC /, { timeout: 5_000 });
+
+    // Dispatch a synthetic error so the test doesn't depend on Playwright's
+    // error-handling for thrown exceptions (it can fail the test on uncaught
+    // errors). The plugin listens for the 'error' event regardless of origin.
+    await page.evaluate(() => {
+      window.dispatchEvent(
+        new ErrorEvent('error', {
+          message: 'e2e probe boom',
+          filename: 'e2e-test',
+          lineno: 1,
+          colno: 1,
+        }),
+      );
+    });
+
+    await page.waitForTimeout(400);
+    await page.click('#caprr-toggle');
+    await expect(page.locator('#caprr-overlay')).toHaveAttribute('data-caprr-state', 'reviewing', {
+      timeout: 10_000,
+    });
+    await page.click('#caprr-save');
+    await expect(page.locator('#caprr-status')).toHaveText('Idle', { timeout: 10_000 });
+
+    const found = await page.evaluate(async () => {
+      const b = (window as unknown as { __caprrLastSavedBlob?: Blob }).__caprrLastSavedBlob;
+      if (!b) return { ok: false, reason: 'no blob' };
+      const buf = new Uint8Array(await b.arrayBuffer());
+
+      // Scan for "rrwebspd-events!"
+      const marker = new TextEncoder().encode('rrwebspd-events!');
+      let idx = -1;
+      outer: for (let i = 0; i <= buf.length - marker.length; i++) {
+        for (let j = 0; j < marker.length; j++) {
+          if (buf[i + j] !== marker[j]) continue outer;
+        }
+        idx = i + marker.length;
+        break;
+      }
+      if (idx < 0) return { ok: false, reason: 'no marker' };
+
+      // Gunzip the payload and parse the JSON.
+      const gz = buf.slice(idx);
+      const stream = new Response(gz).body!.pipeThrough(new DecompressionStream('gzip'));
+      const decompressed = new Uint8Array(await new Response(stream).arrayBuffer());
+      const payload = JSON.parse(new TextDecoder().decode(decompressed)) as {
+        events: { type: number; data: unknown }[];
+      };
+
+      // Plugin events are type 6; data shape is { plugin: string, payload: unknown }.
+      const errorEvents = payload.events.filter(
+        (e) =>
+          e.type === 6 &&
+          typeof e.data === 'object' &&
+          e.data !== null &&
+          'plugin' in e.data &&
+          (e.data as { plugin?: unknown }).plugin === 'rrweb/errors@1',
+      );
+      const messages = errorEvents.map(
+        (e) => ((e.data as { payload?: { message?: string } }).payload?.message) ?? null,
+      );
+      return { ok: true, count: errorEvents.length, messages };
+    });
+
+    expect(found.ok, found.ok ? '' : found.reason).toBe(true);
+    expect(found.count).toBeGreaterThan(0);
+    expect(found.messages).toContain('e2e probe boom');
+  });
+
   test('destroy() removes the pill and the overlay from the document', async ({ page }) => {
     await installCanvasGetDisplayMediaStub(page);
     await page.goto('/');

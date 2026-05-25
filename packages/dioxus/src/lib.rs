@@ -83,6 +83,9 @@ pub fn Recorder(
     /// Capture `console.*` calls via the rrweb console plugin. Default `true`.
     #[props(default = true)]
     capture_console: bool,
+    /// Capture window `error` + `unhandledrejection` events. Default `true`.
+    #[props(default = true)]
+    capture_errors: bool,
 ) -> Element {
     if !enabled {
         return rsx! {};
@@ -90,7 +93,7 @@ pub fn Recorder(
 
     // Build the options JSON literal substituted into the boot script.
     let opts_json = format!(
-        r#"{{"maxRecordingMs":{max_recording_ms},"captureNetwork":{capture_network},"captureConsole":{capture_console}}}"#
+        r#"{{"maxRecordingMs":{max_recording_ms},"captureNetwork":{capture_network},"captureConsole":{capture_console},"captureErrors":{capture_errors}}}"#
     );
     let boot = boot_script(&opts_json);
 

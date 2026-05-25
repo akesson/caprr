@@ -77,6 +77,8 @@ export interface CreateRecorderOptions {
   captureNetwork?: boolean;
   /** Load the rrweb console plugin. Default: true. */
   captureConsole?: boolean;
+  /** Capture window 'error' + 'unhandledrejection' as plugin events. Default: true. */
+  captureErrors?: boolean;
   /** Optional sink for the saved Blob. If omitted, the file is downloaded. */
   onSave?: (blob: Blob, meta: { name: string; viewport: Viewport; annotationCount: number }) => Promise<void> | void;
 }
