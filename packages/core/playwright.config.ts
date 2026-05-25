@@ -10,7 +10,9 @@ import { defineConfig, devices } from '@playwright/test';
  * no permission picker is reached.
  *
  * Matrix: Chromium + Firefox + WebKit. Each lifecycle test asserts
- * the codec the browser actually negotiated.
+ * the codec the browser actually negotiated. CI runs Chromium and
+ * Firefox on Linux and WebKit on macOS (Playwright's bundled WebKit
+ * on Linux ships no MediaRecorder) — see .github/workflows/ci.yml.
  */
 export default defineConfig({
   testDir: './e2e',
@@ -18,7 +20,16 @@ export default defineConfig({
   forbidOnly: !!process.env['CI'],
   retries: process.env['CI'] ? 1 : 0,
   workers: process.env['CI'] ? 1 : undefined,
-  reporter: process.env['CI'] ? [['list'], ['github']] : 'list',
+  // `html` writes an interactive report + the on-first-retry traces
+  // into ./playwright-report; CI uploads that folder as an artifact
+  // when a job fails so failures are debuggable without re-running.
+  reporter: process.env['CI']
+    ? [
+        ['list'],
+        ['github'],
+        ['html', { outputFolder: 'playwright-report', open: 'never' }],
+      ]
+    : 'list',
   use: {
     baseURL: 'http://localhost:5173',
     trace: 'on-first-retry',

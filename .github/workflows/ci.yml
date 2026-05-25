@@ -25,9 +25,24 @@ jobs:
       - run: pnpm build
 
   e2e:
-    name: pnpm — playwright (chromium + firefox + webkit)
-    runs-on: ubuntu-latest
+    # Chromium + Firefox run on Linux. WebKit runs on macOS because
+    # Playwright's bundled Linux WebKit (WPE port) ships no
+    # MediaRecorder — createRecorder feature-detects and returns a
+    # no-op handle there, which would leave every lifecycle test
+    # with nothing to drive. macos-latest's WebKit is the real
+    # WebKit framework and has MediaRecorder, so this is the only
+    # place in CI where the WebKit engine actually exercises the
+    # recorder. macOS minutes are free on public repos.
+    name: e2e (${{ matrix.browser }} on ${{ matrix.os }})
+    runs-on: ${{ matrix.os }}
     needs: js
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - { os: ubuntu-latest, browser: chromium }
+          - { os: ubuntu-latest, browser: firefox }
+          - { os: macos-latest,  browser: webkit }
     steps:
       - uses: actions/checkout@v6
       - uses: pnpm/action-setup@v6
@@ -36,7 +51,7 @@ jobs:
           node-version: 22
           cache: pnpm
       - run: pnpm install --frozen-lockfile
-      # Cache the Playwright browser binaries by version. Saves ~90s per run.
+      # Cache the Playwright browser binaries by version + browser.
       # `pnpm exec playwright --version` returns "Version 1.x.y"; we strip the prefix.
       - name: Resolve Playwright version
         id: pw-version
@@ -48,24 +63,25 @@ jobs:
         id: pw-cache
         with:
           path: ~/.cache/ms-playwright
-          key: playwright-${{ steps.pw-version.outputs.version }}-${{ runner.os }}
-      - name: Install Playwright browsers (+ system deps)
+          key: playwright-${{ steps.pw-version.outputs.version }}-${{ runner.os }}-${{ matrix.browser }}
+      - name: Install Playwright browser (+ system deps)
         if: steps.pw-cache.outputs.cache-hit != 'true'
         working-directory: packages/core
-        run: pnpm exec playwright install --with-deps chromium firefox webkit
+        run: pnpm exec playwright install --with-deps ${{ matrix.browser }}
       - name: Install Playwright system deps (cache hit path)
-        if: steps.pw-cache.outputs.cache-hit == 'true'
+        if: steps.pw-cache.outputs.cache-hit == 'true' && runner.os == 'Linux'
         working-directory: packages/core
-        run: pnpm exec playwright install-deps chromium firefox webkit
+        run: pnpm exec playwright install-deps ${{ matrix.browser }}
       # The plain-html example imports `caprr` via its `exports` map,
       # which points at `dist/index.js`. Without a build, the dev server
       # serves a 404 and the recorder never mounts — every test fails.
       - run: pnpm build
-      - run: pnpm test:e2e
+      - working-directory: packages/core
+        run: pnpm exec playwright test --project=${{ matrix.browser }}
       - uses: actions/upload-artifact@v7
         if: failure()
         with:
-          name: playwright-report
+          name: playwright-report-${{ matrix.browser }}
           path: packages/core/playwright-report/
           retention-days: 14
 
