@@ -27,7 +27,9 @@ export const RRWEB_UUID = new Uint8Array([
 ]);
 
 export const gzipBytes = async (bytes: Uint8Array): Promise<Uint8Array> => {
-  const stream = new Blob([bytes as BlobPart]).stream().pipeThrough(new CompressionStream('gzip'));
+  // Response().body works in real browsers AND under jsdom (Node 22 fetch);
+  // Blob.stream() is not exposed by jsdom and would break unit tests.
+  const stream = new Response(bytes as BlobPart).body!.pipeThrough(new CompressionStream('gzip'));
   return new Uint8Array(await new Response(stream).arrayBuffer());
 };
 
