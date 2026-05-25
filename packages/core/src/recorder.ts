@@ -191,6 +191,16 @@ export const createRecorderImpl = (opts: CreateRecorderOptions): Recorder => {
       requestAnimationFrame(domTick);
     };
     requestAnimationFrame(domTick);
+
+    // Re-render annotations whenever the stage resizes (window resize,
+    // browser zoom, DPR change). Pixel anchors are normalized 0..1, so
+    // positionForRender recomputes from the fresh layer dimensions.
+    if (typeof ResizeObserver === 'function') {
+      s.stageResizeObserver = new ResizeObserver(() => {
+        if (s.state === 'reviewing') renderAnnotations(s, time);
+      });
+      s.stageResizeObserver.observe(stage);
+    }
     time.seek(0);
     showPane('video');
     const elapsed = s.events.length
@@ -204,6 +214,14 @@ export const createRecorderImpl = (opts: CreateRecorderOptions): Recorder => {
   };
 
   const teardownPlayer = (): void => {
+    if (s.stageResizeObserver) {
+      try {
+        s.stageResizeObserver.disconnect();
+      } catch {
+        // noop
+      }
+      s.stageResizeObserver = null;
+    }
     try {
       if (s.player && s.player.$destroy) s.player.$destroy();
     } catch {

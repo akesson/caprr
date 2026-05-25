@@ -283,7 +283,6 @@ export const addNote = (s: RecorderState, time: TimeSource): void => {
 export const installNoteDrag = (s: RecorderState, time: TimeSource): (() => void) => {
   interface DragState {
     ann: Annotation;
-    layerRect: DOMRect;
     offsetX: number;
     offsetY: number;
     moved: boolean;
@@ -302,11 +301,9 @@ export const installNoteDrag = (s: RecorderState, time: TimeSource): (() => void
     const annId = noteEl.dataset['annId'];
     const ann = s.annotations.find((a) => a.id === annId);
     if (!ann) return;
-    const lr = layer.getBoundingClientRect();
     const nr = noteEl.getBoundingClientRect();
     drag = {
       ann,
-      layerRect: lr,
       offsetX: e.clientX - nr.left,
       offsetY: e.clientY - nr.top,
       moved: false,
@@ -323,7 +320,12 @@ export const installNoteDrag = (s: RecorderState, time: TimeSource): (() => void
 
   const onMove = (e: PointerEvent): void => {
     if (!drag) return;
-    const { ann, layerRect, offsetX, offsetY, noteEl } = drag;
+    const { ann, offsetX, offsetY, noteEl } = drag;
+    // Read the layer rect at move time, not drag-start time, so a window
+    // resize partway through a drag does not put the note off-target.
+    const layer = $('caprr-annot-layer');
+    if (!layer) return;
+    const layerRect = layer.getBoundingClientRect();
     const px = e.clientX - layerRect.left - offsetX;
     const py = e.clientY - layerRect.top - offsetY;
     if (!drag.moved) {

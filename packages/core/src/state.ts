@@ -22,6 +22,9 @@ export interface RecorderState {
   startedAt: number;
   /** rrweb-player instance constructed at review time. */
   player: RrwebPlayer | null;
+  /** Observes the review stage for size changes so annotation positions
+   *  follow window resize / DPR change. Lives only during reviewing. */
+  stageResizeObserver: ResizeObserver | null;
   /** Auto-stop timer. */
   autoStopHandle: ReturnType<typeof setTimeout> | null;
   /** Display ticker (refreshes the REC mm:ss in the pill). */
@@ -46,6 +49,7 @@ export const initialState = (): RecorderState => ({
   stopFn: null,
   startedAt: 0,
   player: null,
+  stageResizeObserver: null,
   autoStopHandle: null,
   tickHandle: null,
   stream: null,
