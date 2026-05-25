@@ -31,8 +31,13 @@ node_modules/
 
 # Build output
 packages/*/dist/
-packages/dioxus/assets/
 examples/*/dist/
+
+# NOTE: packages/dioxus/assets/ is NOT ignored — those vendored JS+CSS
+# files are part of the published Rust crate's artifact (referenced by
+# asset!() at compile time) and need to be present for git-dep consumers
+# too. Always run `pnpm build && pnpm vendor:dioxus` before committing
+# a release / tag.
 
 # Editor / OS
 .DS_Store
