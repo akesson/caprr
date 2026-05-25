@@ -78,9 +78,24 @@
       import { createRecorder, VERSION } from 'caprr';
       import 'caprr/styles.css';
 
-      const rec = createRecorder({});
+      // Test mode (?test=1) routes the saved Blob into globals instead
+      // of triggering a download — Playwright integration tests assert
+      // on `window.__caprrLastSavedBlob` and `__caprrLastSavedMeta`.
+      // In normal manual use (no query), save() uses the file picker
+      // as it always has.
+      const testMode = new URLSearchParams(location.search).has('test');
+      const rec = createRecorder(
+        testMode
+          ? {
+              onSave: async (blob, meta) => {
+                window.__caprrLastSavedBlob = blob;
+                window.__caprrLastSavedMeta = meta;
+              },
+            }
+          : {},
+      );
       window.__caprr = rec;
-      console.log('[caprr-example] mounted version', VERSION);
+      console.log('[caprr-example] mounted version', VERSION, testMode ? '(test mode)' : '');
 
       document.querySelector('[data-cy="btn-load"]')?.addEventListener('click', () => {
         fetch('/no-such-resource').catch(() => {});

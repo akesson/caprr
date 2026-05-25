@@ -10,6 +10,10 @@ import { test as base, type Page } from '@playwright/test';
  * `getDisplayMedia` lazily (on the Start click), so injecting via
  * `addInitScript` is plenty early.
  */
+// getDisplayMedia is exposed via MediaDevices.prototype in some browsers
+// (notably WebKit), so a plain assignment can shadow with an own property
+// but doesn't always take precedence at lookup time. Use defineProperty
+// with explicit descriptor for cross-browser reliability.
 const CANVAS_STREAM_STUB = `
 (() => {
   const canvas = document.createElement('canvas');
@@ -28,7 +32,11 @@ const CANVAS_STREAM_STUB = `
   if (!navigator.mediaDevices) {
     Object.defineProperty(navigator, 'mediaDevices', { value: {}, configurable: true });
   }
-  navigator.mediaDevices.getDisplayMedia = async () => canvas.captureStream(30);
+  Object.defineProperty(navigator.mediaDevices, 'getDisplayMedia', {
+    value: async () => canvas.captureStream(30),
+    configurable: true,
+    writable: true,
+  });
 })();
 `;
 
@@ -43,9 +51,11 @@ const NOT_ALLOWED_STUB = `
   if (!navigator.mediaDevices) {
     Object.defineProperty(navigator, 'mediaDevices', { value: {}, configurable: true });
   }
-  navigator.mediaDevices.getDisplayMedia = async () => {
-    throw new DOMException('user denied', 'NotAllowedError');
-  };
+  Object.defineProperty(navigator.mediaDevices, 'getDisplayMedia', {
+    value: async () => { throw new DOMException('user denied', 'NotAllowedError'); },
+    configurable: true,
+    writable: true,
+  });
 })();
 `;
 
