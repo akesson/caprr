@@ -1,3 +1,4 @@
+import type { WebCodecsEncoderHandle } from './encoder-webcodecs';
 import type { EventsSink, RecordingSink } from './storage';
 import type {
   ActivePane,
@@ -39,9 +40,13 @@ export interface RecorderState {
   // --- pixel video capture ----------------------------------------------
   stream: MediaStream | null;
   recorder: MediaRecorder | null;
+  /** Optional WebCodecs-backed encoder handle (used when opts.encoder
+   *  === 'webcodecs' and the host supports it). When set, `recorder`
+   *  is null — they are mutually exclusive. */
+  webCodecsEncoder: WebCodecsEncoderHandle | null;
   /** OPFS-backed (or in-memory fallback) sink that receives every
-   *  MediaRecorder dataavailable chunk. Owned for the duration of one
-   *  recording; replaced on each start(). */
+   *  encoded chunk (from either MediaRecorder or the WebCodecs path).
+   *  Owned for the duration of one recording; replaced on each start(). */
   recordingSink: RecordingSink | null;
   videoMime: string;
   videoBlob: Blob | null;
@@ -65,6 +70,7 @@ export const initialState = (): RecorderState => ({
   tickHandle: null,
   stream: null,
   recorder: null,
+  webCodecsEncoder: null,
   recordingSink: null,
   videoMime: '',
   videoBlob: null,
@@ -83,6 +89,10 @@ export const fullCleanup = (s: RecorderState): void => {
     s.stream = null;
   }
   s.recorder = null;
+  if (s.webCodecsEncoder) {
+    void s.webCodecsEncoder.abort();
+    s.webCodecsEncoder = null;
+  }
   if (s.recordingSink) {
     // Best-effort dispose; do not block. dispose() removes the OPFS
     // temp file (no-op for the in-memory fallback).

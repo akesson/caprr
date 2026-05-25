@@ -44,6 +44,7 @@ export const createRecorderImpl = (opts: CreateRecorderOptions): Recorder => {
   const captureNetwork = opts.captureNetwork ?? true;
   const captureConsole = opts.captureConsole ?? true;
   const captureErrors = opts.captureErrors ?? true;
+  const requestedEncoder = opts.encoder ?? 'mediarecorder';
 
   // --- UI ---------------------------------------------------------------
   const pill = createPill();
@@ -306,32 +307,51 @@ export const createRecorderImpl = (opts: CreateRecorderOptions): Recorder => {
       if (s.state === 'recording') stop();
     });
 
-    s.videoMime = pickMime();
-    // Open the chunk sink BEFORE MediaRecorder starts so the first
-    // 'dataavailable' event has somewhere to land. Backend selection
-    // (OPFS vs in-memory) is at openRecordingSink time.
+    // Open the chunk sink BEFORE the encoder starts so the first
+    // emitted chunk has somewhere to land. Backend selection (OPFS vs
+    // in-memory) is at openRecordingSink time.
     s.recordingSink = await openRecordingSink();
-    try {
-      s.recorder = new MediaRecorder(stream, s.videoMime ? { mimeType: s.videoMime } : undefined);
-    } catch (e) {
-      console.warn('[caprr] MediaRecorder construction failed', e);
-      fullCleanup(s);
-      s.state = 'idle';
-      applyState();
-      return;
-    }
-    s.recorder.ondataavailable = (e): void => {
-      if (e.data && e.data.size > 0) {
-        // Fire-and-forget. The sink serializes writes internally; the
-        // WritableStream applies backpressure if needed.
-        void s.recordingSink?.writeChunk(e.data);
-      }
-    };
 
-    await new Promise<void>((res) => {
-      s.recorder?.addEventListener('start', () => res(), { once: true });
-      s.recorder?.start(TIMESLICE_MS);
-    });
+    // Pick encoder. Default 'mediarecorder' uses the legacy path.
+    // 'webcodecs' uses Mediabunny + WebCodecs `VideoEncoder` for
+    // hardware-accelerated AV1 / VP9 in fragmented MP4. The encoder
+    // module is dynamically imported so consumers on the default path
+    // do not pay the ~190 KB Mediabunny bundle cost.
+    if (requestedEncoder === 'webcodecs') {
+      try {
+        const mod = await import('./encoder-webcodecs');
+        if (mod.isWebCodecsRecordingSupported()) {
+          const handle = await mod.startWebCodecsRecording(stream, s.recordingSink);
+          s.webCodecsEncoder = handle;
+          s.videoMime = 'video/mp4';
+        }
+      } catch (e) {
+        console.warn('[caprr] WebCodecs start failed; falling back to MediaRecorder', e);
+        s.webCodecsEncoder = null;
+      }
+    }
+
+    if (!s.webCodecsEncoder) {
+      s.videoMime = pickMime();
+      try {
+        s.recorder = new MediaRecorder(stream, s.videoMime ? { mimeType: s.videoMime } : undefined);
+      } catch (e) {
+        console.warn('[caprr] MediaRecorder construction failed', e);
+        fullCleanup(s);
+        s.state = 'idle';
+        applyState();
+        return;
+      }
+      s.recorder.ondataavailable = (ev): void => {
+        if (ev.data && ev.data.size > 0) {
+          void s.recordingSink?.writeChunk(ev.data);
+        }
+      };
+      await new Promise<void>((res) => {
+        s.recorder?.addEventListener('start', () => res(), { once: true });
+        s.recorder?.start(TIMESLICE_MS);
+      });
+    }
 
     s.events = [];
     s.eventsSink = await openEventsSink();
@@ -385,7 +405,18 @@ export const createRecorderImpl = (opts: CreateRecorderOptions): Recorder => {
       }
       const ext = extForMime(s.videoMime);
       const type = s.videoMime || 'video/' + ext;
-      if (s.recordingSink) {
+      // WebCodecs path: finalize the encoder, which closes the muxer
+      // and flushes remaining chunks through the sink. The sink itself
+      // is then drained inside the encoder.finalize().
+      if (s.webCodecsEncoder) {
+        try {
+          s.videoBlob = await s.webCodecsEncoder.finalize();
+        } catch (e) {
+          console.warn('[caprr] webCodecs.finalize failed', e);
+          s.videoBlob = new Blob([], { type });
+        }
+        s.webCodecsEncoder = null;
+      } else if (s.recordingSink) {
         try {
           s.videoBlob = await s.recordingSink.finalize(type);
         } catch (e) {
@@ -421,7 +452,11 @@ export const createRecorderImpl = (opts: CreateRecorderOptions): Recorder => {
       s.recorder.addEventListener('stop', finalizeVideo, { once: true });
       s.recorder.stop();
     } else {
-      finalizeVideo();
+      // WebCodecs path or already-inactive MediaRecorder. finalizeVideo
+      // is async; fire-and-forget — the recorder state machine will
+      // transition to 'reviewing' (or back to 'idle' on discard) from
+      // within finalizeVideo.
+      void finalizeVideo();
     }
   };
 

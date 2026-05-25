@@ -79,6 +79,11 @@ export interface CreateRecorderOptions {
   captureConsole?: boolean;
   /** Capture window 'error' + 'unhandledrejection' as plugin events. Default: true. */
   captureErrors?: boolean;
+  /** Video encoder pipeline. Default 'mediarecorder' (broad compatibility,
+   *  AV1 on Chrome 116+, VP9 on Firefox, H.264 on Safari). 'webcodecs' uses
+   *  Mediabunny's WebCodecs `VideoEncoder` for AV1-preferring hardware
+   *  encoding; falls back to MediaRecorder when WebCodecs is unavailable. */
+  encoder?: 'mediarecorder' | 'webcodecs';
   /** Optional sink for the saved Blob. If omitted, the file is downloaded. */
   onSave?: (blob: Blob, meta: { name: string; viewport: Viewport; annotationCount: number }) => Promise<void> | void;
 }
