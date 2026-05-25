@@ -143,9 +143,32 @@ export const createRecorderImpl = (opts: CreateRecorderOptions): Recorder => {
         height: Math.max(120, Math.floor(stageRect.height) - RRWEB_PLAYER_CONTROLLER_H),
       },
     });
-    vid.addEventListener('timeupdate', () => {
-      if (s.activePane === 'video') renderAnnotations(s, time);
-    });
+    // Drive annotation re-render off `requestVideoFrameCallback` when the
+    // host browser supports it (Chrome ≥ 83, Safari ≥ 15.4; Firefox added
+    // it in 132). That fires once per painted video frame instead of the
+    // ~4 Hz `timeupdate` event. Falls back to `timeupdate` below the
+    // support floor.
+    const rvfc =
+      typeof (vid as HTMLVideoElement & { requestVideoFrameCallback?: unknown })
+        .requestVideoFrameCallback === 'function'
+        ? (
+            vid as HTMLVideoElement & {
+              requestVideoFrameCallback: (cb: (now: number, meta: unknown) => void) => number;
+            }
+          ).requestVideoFrameCallback.bind(vid)
+        : null;
+    if (rvfc) {
+      const onFrame = (): void => {
+        if (s.state !== 'reviewing') return;
+        if (s.activePane === 'video') renderAnnotations(s, time);
+        rvfc(onFrame);
+      };
+      rvfc(onFrame);
+    } else {
+      vid.addEventListener('timeupdate', () => {
+        if (s.activePane === 'video') renderAnnotations(s, time);
+      });
+    }
     try {
       if (s.player && typeof s.player.addEventListener === 'function') {
         s.player.addEventListener('ui-update-current-time', () => {
