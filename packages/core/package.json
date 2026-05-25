@@ -30,19 +30,23 @@
     "build": "vite build",
     "dev": "vite build --watch",
     "typecheck": "tsc --noEmit",
-    "test": "vitest run"
+    "test": "vitest run",
+    "test:e2e": "playwright test",
+    "test:e2e:install": "playwright install chromium firefox webkit"
   },
   "dependencies": {
+    "@rrweb/rrweb-plugin-console-record": "2.0.0-alpha.20",
     "rrweb": "2.0.0-alpha.4",
-    "rrweb-player": "1.0.0-alpha.4",
-    "@rrweb/rrweb-plugin-console-record": "2.0.0-alpha.20"
+    "rrweb-player": "1.0.0-alpha.4"
   },
   "devDependencies": {
+    "@playwright/test": "^1.60.0",
+    "@types/node": "^25.9.1",
+    "jsdom": "^25.0.1",
     "typescript": "^5.7.2",
     "vite": "^6.0.7",
     "vite-plugin-dts": "^4.4.0",
-    "vitest": "^2.1.8",
-    "jsdom": "^25.0.1"
+    "vitest": "^2.1.8"
   },
   "keywords": [
     "rrweb",

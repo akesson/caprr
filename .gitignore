@@ -46,3 +46,9 @@ examples/*/dist/
 
 # Playwright MCP scratch output (page snapshots, console logs)
 .playwright-mcp/
+
+# Playwright integration suite artifacts (per-run, machine-local)
+packages/*/test-results/
+packages/*/playwright-report/
+packages/*/blob-report/
+packages/*/.playwright-cache/
