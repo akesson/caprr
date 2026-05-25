@@ -298,6 +298,33 @@ export const createRecorderImpl = (opts: CreateRecorderOptions): Recorder => {
       if (s.state === 'recording') stop();
     });
 
+    // Optional Region Capture (Chromium-only). When the consumer opts
+    // into 'self' or passes an Element, crop the captured surface to
+    // that element via CropTarget.fromElement + videoTrack.cropTo. On
+    // browsers without CropTarget the setting is silently ignored.
+    // CropTarget is not in lib.dom.d.ts; treat opaquely.
+    const requestedRegion = opts.captureRegion;
+    if (requestedRegion && requestedRegion !== 'fullTab') {
+      const cropFromEl = (
+        globalThis as unknown as {
+          CropTarget?: { fromElement: (e: Element) => Promise<unknown> };
+        }
+      ).CropTarget;
+      const target =
+        requestedRegion === 'self' ? document.documentElement : requestedRegion;
+      const videoTrack = stream.getVideoTracks()[0] as MediaStreamTrack & {
+        cropTo?: (target: unknown) => Promise<void>;
+      };
+      if (cropFromEl && typeof cropFromEl.fromElement === 'function' && typeof videoTrack.cropTo === 'function') {
+        try {
+          const cropTarget = await cropFromEl.fromElement(target);
+          await videoTrack.cropTo(cropTarget);
+        } catch (e) {
+          console.warn('[caprr] cropTo failed; capturing full surface', e);
+        }
+      }
+    }
+
     // Open the chunk sink BEFORE the encoder starts so the first
     // emitted chunk has somewhere to land. Backend selection (OPFS vs
     // in-memory) is at openRecordingSink time.

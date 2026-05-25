@@ -82,6 +82,11 @@ export interface CreateRecorderOptions {
    *  Mediabunny's WebCodecs `VideoEncoder` for AV1-preferring hardware
    *  encoding; falls back to MediaRecorder when WebCodecs is unavailable. */
   encoder?: 'mediarecorder' | 'webcodecs';
+  /** Optional Region Capture: when set to 'self' or an Element, crops
+   *  the captured stream to that element via `CropTarget.fromElement`.
+   *  Chromium-only (Chrome 104+); on browsers without CropTarget the
+   *  setting is silently ignored. Default 'fullTab' (no crop). */
+  captureRegion?: 'fullTab' | 'self' | Element;
   /** Optional sink for the saved Blob. If omitted, the file is downloaded. */
   onSave?: (blob: Blob, meta: { name: string; viewport: Viewport; annotationCount: number }) => Promise<void> | void;
 }
