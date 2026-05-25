@@ -1,0 +1,52 @@
+name: Release
+
+# Trigger on a SemVer tag push (e.g. `git tag v0.1.0 && git push --tags`).
+# Publishes both packages back-to-back: npm first (so the artifact the
+# Rust crate vendors is the same one consumers get from npm), then crates.io.
+on:
+  push:
+    tags: ['v*.*.*']
+
+jobs:
+  npm:
+    name: publish npm (caprr)
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      id-token: write   # enables npm provenance
+    steps:
+      - uses: actions/checkout@v4
+      - uses: pnpm/action-setup@v4
+        with:
+          version: 11
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 20
+          cache: pnpm
+          registry-url: 'https://registry.npmjs.org'
+      - run: pnpm install --frozen-lockfile
+      - run: pnpm build
+      - run: pnpm publish --filter caprr --access public --no-git-checks --provenance
+        env:
+          NODE_AUTH_TOKEN: ${{ secrets.NPM_TOKEN }}
+
+  crates:
+    name: publish crates.io (caprr-dioxus)
+    runs-on: ubuntu-latest
+    needs: npm
+    steps:
+      - uses: actions/checkout@v4
+      - uses: pnpm/action-setup@v4
+        with:
+          version: 11
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 20
+          cache: pnpm
+      - uses: dtolnay/rust-toolchain@stable
+      # The Rust crate needs the vendored JS+CSS in assets/ before
+      # `cargo publish` packages it up.
+      - run: pnpm install --frozen-lockfile
+      - run: pnpm build
+      - run: pnpm vendor:dioxus
+      - run: cargo publish -p caprr-dioxus --token ${{ secrets.CRATES_IO_TOKEN }}
