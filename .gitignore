@@ -32,6 +32,7 @@ node_modules/
 # Build output
 packages/*/dist/
 packages/dioxus/assets/
+examples/*/dist/
 
 # Editor / OS
 .DS_Store
